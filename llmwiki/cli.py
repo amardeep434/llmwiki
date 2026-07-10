@@ -117,6 +117,17 @@ def _cmd_init(args) -> int:
     save_config(config, cfg_path)
     print(f"\n✅ Created llmwiki.json")
     print(f"✅ Created raw/, wiki/, site/ directories")
+
+    # Generate agent schema files
+    from llmwiki.agent_schema import write_agent_schemas
+
+    written = write_agent_schemas(
+        source, str(output / "site"), name,
+        {"total_pages": 0, "total_edges": 0, "total_clusters": 0},
+    )
+    for f in written:
+        print(f"✅ Generated {f}")
+
     print(f"\nRun `llmwiki ingest` to extract content, then `llmwiki build` to generate the site.")
     return 0
 
@@ -160,6 +171,18 @@ def _cmd_build(args) -> int:
     result = build_site(root, config, full=args.full)
     print(f"  Pages: {result.get('total_pages', 0)}")
     print(f"  Categories: {result.get('total_categories', 0)}")
+
+    # Update agent schemas with real stats
+    from llmwiki.agent_schema import write_agent_schemas
+
+    source_path = config["sources"][0]["path"] if config.get("sources") else str(root)
+    site_dir = root / "site"
+    write_agent_schemas(
+        Path(source_path), str(site_dir),
+        config.get("project", {}).get("name", ""),
+        result,
+    )
+
     return 0
 
 
