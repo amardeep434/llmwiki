@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+raw/
+wiki/
+site/
+.llmwiki-state.json
+llmwiki.db
+*.db
+.pytest_cache/
