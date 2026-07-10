@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
     p_all.add_argument("--config", default="llmwiki.json", help="Config file path")
+    p_all.add_argument("--full", action="store_true", help="Force full rebuild")
 
     args = parser.parse_args(argv)
 

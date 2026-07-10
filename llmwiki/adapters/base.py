@@ -79,6 +79,28 @@ class BaseAdapter(ABC):
         results = []
         for ext in self.extensions:
             for p in root.rglob(f"*{ext}"):
-                if not any(ex in str(p) for ex in exclude):
+                if not self._is_excluded(p, root, exclude):
                     results.append(p)
         return sorted(results)
+
+    @staticmethod
+    def _is_excluded(path: Path, root: Path, exclude: list[str]) -> bool:
+        """Check if path should be excluded.
+
+        Glob patterns (containing * or ?) match against the filename.
+        Plain names match against individual path components relative to root.
+        """
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            rel = path
+        parts = set(rel.parts)
+
+        for pattern in exclude:
+            if "*" in pattern or "?" in pattern:
+                if path.match(pattern):
+                    return True
+            else:
+                if pattern in parts:
+                    return True
+        return False
