@@ -35,8 +35,16 @@ class TestWikiPage:
         fm = page.to_frontmatter()
         assert "---" in fm
         assert 'title: "My Page"' in fm
-        assert "slug: my-page" in fm
+        assert "slug: \"my-page\"" in fm
         assert "tags: [util, core]" in fm
+
+    def test_to_frontmatter_escapes_quotes(self):
+        page = WikiPage(slug="test", title='A "quoted" title', category="cat",
+                        source_path='/path/with: colon', body="body")
+        page.compute_hash()
+        fm = page.to_frontmatter()
+        assert '\\"' in fm  # quotes escaped
+        assert "---" in fm  # still valid structure
 
     def test_to_markdown(self):
         page = WikiPage(slug="test", title="Test", category="cat",

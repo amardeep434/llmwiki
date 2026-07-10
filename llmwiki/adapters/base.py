@@ -28,16 +28,22 @@ class WikiPage:
         self.content_hash = hashlib.sha256(self.body.encode("utf-8")).hexdigest()[:16]
         return self.content_hash
 
+    @staticmethod
+    def _yaml_escape(value: str) -> str:
+        """Escape a string for safe YAML double-quoted output."""
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
+
     def to_frontmatter(self) -> str:
         """Render YAML frontmatter string."""
+        esc = self._yaml_escape
         lines = [
             "---",
-            f"title: \"{self.title}\"",
-            f"slug: {self.slug}",
-            f"category: {self.category}",
-            f"source_path: {self.source_path}",
-            f"language: {self.language}",
-            f"content_hash: {self.content_hash}",
+            f'title: "{esc(self.title)}"',
+            f'slug: "{esc(self.slug)}"',
+            f'category: "{esc(self.category)}"',
+            f'source_path: "{esc(self.source_path)}"',
+            f'language: "{esc(self.language)}"',
+            f'content_hash: "{esc(self.content_hash)}"',
             f"tags: [{', '.join(self.tags)}]",
             f"references: [{', '.join(self.references)}]",
             "---",
