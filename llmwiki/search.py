@@ -1,0 +1,165 @@
+"""Search system — SQLite FTS5 for AI agents, client-side index for humans."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+
+def create_search_db(db_path: Path) -> None:
+    """Create the SQLite FTS5 search database."""
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS pages (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            category TEXT,
+            source_path TEXT,
+            body_md TEXT,
+            body_plain TEXT,
+            content_hash TEXT,
+            tags TEXT,
+            references_out TEXT,
+            references_in TEXT,
+            importance_score REAL DEFAULT 0.0,
+            cluster_id TEXT,
+            language TEXT,
+            metadata TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
+            title, body_plain, tags, category,
+            content='pages', content_rowid='rowid'
+        )
+    """)
+
+    # Triggers to keep FTS index in sync with pages table
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS pages_ai AFTER INSERT ON pages BEGIN
+            INSERT INTO pages_fts(rowid, title, body_plain, tags, category)
+            VALUES (new.rowid, new.title, new.body_plain, new.tags, new.category);
+        END
+    """)
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS pages_ad AFTER DELETE ON pages BEGIN
+            INSERT INTO pages_fts(pages_fts, rowid, title, body_plain, tags, category)
+            VALUES ('delete', old.rowid, old.title, old.body_plain, old.tags, old.category);
+        END
+    """)
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS pages_au AFTER UPDATE ON pages BEGIN
+            INSERT INTO pages_fts(pages_fts, rowid, title, body_plain, tags, category)
+            VALUES ('delete', old.rowid, old.title, old.body_plain, old.tags, old.category);
+            INSERT INTO pages_fts(rowid, title, body_plain, tags, category)
+            VALUES (new.rowid, new.title, new.body_plain, new.tags, new.category);
+        END
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS edges (
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            edge_type TEXT NOT NULL,
+            PRIMARY KEY (from_id, to_id, edge_type)
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS clusters (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            member_count INTEGER,
+            top_tags TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS build_history (
+            build_number INTEGER PRIMARY KEY,
+            timestamp TEXT,
+            type TEXT,
+            duration_seconds REAL,
+            added_count INTEGER,
+            updated_count INTEGER,
+            archived_count INTEGER,
+            changes TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def insert_page(db_path: Path, page: dict) -> None:
+    """Insert or replace a page in the search database.
+
+    FTS index is kept in sync automatically via triggers created by create_search_db().
+    """
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+
+    # DELETE + INSERT instead of INSERT OR REPLACE so the delete trigger fires
+    # for existing rows (REPLACE = DELETE + INSERT under the hood but doesn't
+    # reliably fire the AFTER DELETE trigger on all SQLite builds).
+    c.execute("DELETE FROM pages WHERE id = ?", (page["id"],))
+    c.execute("""
+        INSERT INTO pages (id, title, category, body_plain, tags, importance_score)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        page["id"], page["title"], page.get("category", ""),
+        page.get("body_plain", ""), page.get("tags", "[]"),
+        page.get("importance_score", 0.0),
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
+    """Full-text search against the FTS5 index."""
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    try:
+        c.execute("""
+            SELECT p.id, p.title, p.category, p.importance_score,
+                   snippet(pages_fts, 1, '>>>', '<<<', '...', 50) as snippet
+            FROM pages_fts
+            JOIN pages p ON pages_fts.rowid = p.rowid
+            WHERE pages_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """, (query, limit))
+        results = [dict(row) for row in c.fetchall()]
+    except sqlite3.OperationalError:
+        results = []
+
+    conn.close()
+    return results
+
+
+def cli_search(query: str, db_path: str) -> int:
+    """CLI search entry point."""
+    results = search_pages(Path(db_path), query)
+    if not results:
+        print(f"No results for: {query}")
+        return 0
+
+    print(f"Found {len(results)} results for: {query}\n")
+    for r in results:
+        print(f"  [{r.get('category', '')}] {r['title']}")
+        if r.get("snippet"):
+            print(f"    {r['snippet']}")
+        print()
+    return 0
