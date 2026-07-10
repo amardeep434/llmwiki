@@ -1,4 +1,6 @@
 """Allow running as python -m llmwiki."""
+import sys
+
 from llmwiki.cli import main
 
-main()
+sys.exit(main())
