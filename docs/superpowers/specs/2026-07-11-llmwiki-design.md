@@ -739,14 +739,19 @@ dependencies = [
 
 LLMWiki is designed to be consumed by any AI coding agent — Claude Code, GitHub Copilot, Codex CLI, Gemini CLI, Cursor, etc. This is achieved through three mechanisms:
 
-### 10.1 Agent Schema Files (CLAUDE.md / AGENTS.md)
+### 10.1 Agent Schema Files
 
-When llmwiki is initialized in a project, it generates:
+When llmwiki is initialized in a project, it generates agent-specific instruction files so every major AI coding agent can discover and use the knowledge base:
 
-- **`CLAUDE.md`** (or appends to existing) — instructions for Claude Code
-- **`AGENTS.md`** (or appends to existing) — agent-agnostic instructions for Codex CLI, Gemini, Copilot, etc.
+| File | Agent | How the agent discovers it |
+|------|-------|---------------------------|
+| `CLAUDE.md` (appends) | Claude Code | Auto-loaded as project context on every session |
+| `AGENTS.md` (appends) | Codex CLI, Gemini CLI, OpenCode | Read by agents looking for `AGENTS.md` |
+| `.github/copilot-instructions.md` (appends) | GitHub Copilot | Copilot reads this for custom project instructions |
+| `GEMINI.md` (appends) | Gemini CLI | Gemini's equivalent of CLAUDE.md |
+| `.cursor/rules` (appends) | Cursor | Cursor reads this directory for project rules |
 
-These files teach the AI agent how to use the wiki — what commands to run, how to query, how to interpret results. They are auto-generated from a template and include the project-specific wiki path and configuration.
+Each file contains the same core content (how to query, what files exist, SQL examples) but formatted for the specific agent's conventions. The `init` command detects which agents are likely in use (checks for `.claude/`, `.github/copilot-instructions.md`, `.cursor/`, etc.) and generates only the relevant files.
 
 ### 10.2 Slash Commands / CLI Queries
 

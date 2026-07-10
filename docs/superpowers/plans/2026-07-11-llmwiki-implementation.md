@@ -4279,12 +4279,14 @@ Ready for first release."
 
 ---
 
-### Task 13: AI Agent Integration (CLAUDE.md / AGENTS.md Generation)
+### Task 13: AI Agent Integration (Multi-Agent Schema Generation)
 
 **Files:**
 - Create: `llmwiki/agent_schema.py`
 - Modify: `llmwiki/cli.py` — add schema generation to `init` command
 - Test: `tests/test_agent_schema.py`
+
+This task generates agent-specific instruction files so Claude Code, GitHub Copilot, Codex CLI, Gemini CLI, and Cursor can all discover and use the knowledge base.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -4293,7 +4295,11 @@ Ready for first release."
 """Tests for AI agent schema generation."""
 
 from pathlib import Path
-from llmwiki.agent_schema import generate_claude_md, generate_agents_md
+from llmwiki.agent_schema import (
+    generate_claude_md, generate_agents_md,
+    generate_copilot_instructions, generate_gemini_md,
+    detect_agents, write_agent_schemas,
+)
 
 
 class TestAgentSchema:
@@ -4318,25 +4324,151 @@ class TestAgentSchema:
         assert "llmwiki search" in content
         assert "AGENTS" in content or "agent" in content.lower()
 
-    def test_includes_query_examples(self, tmp_path):
-        content = generate_claude_md(
-            project_name="Test",
-            wiki_path=str(tmp_path),
+    def test_generate_copilot_instructions(self, tmp_path):
+        content = generate_copilot_instructions(
+            project_name="RioIAM",
+            wiki_path=str(tmp_path / "site"),
+            stats={"total_pages": 892, "total_edges": 2341, "total_clusters": 12},
+        )
+        assert "RioIAM" in content
+        assert "llmwiki" in content
+        assert "search" in content
+
+    def test_generate_gemini_md(self, tmp_path):
+        content = generate_gemini_md(
+            project_name="RioIAM",
+            wiki_path=str(tmp_path / "site"),
             stats={"total_pages": 10, "total_edges": 5, "total_clusters": 1},
         )
-        assert "SELECT" in content  # SQL query examples
-        assert "llms.txt" in content  # References exports
-        assert "/wiki-query" in content or "search" in content
+        assert "RioIAM" in content
+        assert "llmwiki" in content
 
-    def test_write_to_disk(self, tmp_path):
-        content = generate_claude_md("Test", str(tmp_path), {"total_pages": 1, "total_edges": 0, "total_clusters": 0})
-        out = tmp_path / "CLAUDE.md"
-        out.write_text(content)
-        assert out.exists()
-        assert "Test" in out.read_text()
+    def test_detect_agents_none(self, tmp_path):
+        detected = detect_agents(tmp_path)
+        # Should always include agents_md as fallback
+        assert "agents_md" in detected
+
+    def test_detect_agents_claude(self, tmp_path):
+        (tmp_path / ".claude").mkdir()
+        detected = detect_agents(tmp_path)
+        assert "claude_md" in detected
+
+    def test_detect_agents_copilot(self, tmp_path):
+        gh = tmp_path / ".github"
+        gh.mkdir()
+        detected = detect_agents(tmp_path)
+        assert "copilot_instructions" in detected
+
+    def test_write_agent_schemas(self, tmp_path):
+        write_agent_schemas(
+            project_root=tmp_path,
+            wiki_path=str(tmp_path / "site"),
+            project_name="Test",
+            stats={"total_pages": 1, "total_edges": 0, "total_clusters": 0},
+        )
+        # Should always create AGENTS.md
+        assert (tmp_path / "AGENTS.md").exists() or any(
+            f.name.endswith(".md") for f in tmp_path.rglob("*.md")
+        )
+
+    def test_appends_to_existing(self, tmp_path):
+        existing = "# My Project\n\nExisting content.\n"
+        (tmp_path / "CLAUDE.md").write_text(existing)
+        (tmp_path / ".claude").mkdir()
+        write_agent_schemas(
+            project_root=tmp_path,
+            wiki_path=str(tmp_path / "site"),
+            project_name="Test",
+            stats={"total_pages": 1, "total_edges": 0, "total_clusters": 0},
+        )
+        content = (tmp_path / "CLAUDE.md").read_text()
+        assert "Existing content" in content
+        assert "llmwiki" in content
 ```
 
 - [ ] **Step 2: Implement llmwiki/agent_schema.py**
+
+```python
+"""Generate AI agent schema files for multi-agent compatibility.
+
+Generates instruction files for:
+- Claude Code (CLAUDE.md)
+- GitHub Copilot (.github/copilot-instructions.md)
+- Codex CLI / Gemini CLI / others (AGENTS.md)
+- Gemini CLI (GEMINI.md)
+- Cursor (.cursor/rules)
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+_LLMWIKI_MARKER = "<!-- llmwiki:auto -->"
+
+
+def detect_agents(project_root: Path) -> list[str]:
+    """Detect which AI agents are likely in use based on directory markers."""
+    detected = ["agents_md"]  # Always generate AGENTS.md as universal fallback
+
+    if (project_root / ".claude").exists() or (project_root / "CLAUDE.md").exists():
+        detected.append("claude_md")
+    if (project_root / ".github").exists():
+        detected.append("copilot_instructions")
+    if (project_root / "GEMINI.md").exists() or (project_root / ".gemini").exists():
+        detected.append("gemini_md")
+    if (project_root / ".cursor").exists():
+        detected.append("cursor_rules")
+
+    return detected
+
+
+def write_agent_schemas(
+    project_root: Path,
+    wiki_path: str,
+    project_name: str,
+    stats: dict,
+) -> list[str]:
+    """Write agent schema files. Returns list of files written."""
+    detected = detect_agents(project_root)
+    written = []
+
+    generators = {
+        "claude_md": (project_root / "CLAUDE.md", generate_claude_md),
+        "agents_md": (project_root / "AGENTS.md", generate_agents_md),
+        "copilot_instructions": (
+            project_root / ".github" / "copilot-instructions.md",
+            generate_copilot_instructions,
+        ),
+        "gemini_md": (project_root / "GEMINI.md", generate_gemini_md),
+    }
+
+    for agent_key, (filepath, generator) in generators.items():
+        if agent_key not in detected:
+            continue
+        content = generator(project_name, wiki_path, stats)
+        _write_or_append(filepath, content)
+        written.append(str(filepath))
+
+    return written
+
+
+def _write_or_append(filepath: Path, llmwiki_section: str) -> None:
+    """Write a new file or append llmwiki section to existing file."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    marked = f"\n\n{_LLMWIKI_MARKER}\n{llmwiki_section}\n{_LLMWIKI_MARKER}\n"
+
+    if filepath.exists():
+        existing = filepath.read_text(encoding="utf-8")
+        if _LLMWIKI_MARKER in existing:
+            # Replace existing llmwiki section
+            import re
+            pattern = rf"{re.escape(_LLMWIKI_MARKER)}.*?{re.escape(_LLMWIKI_MARKER)}"
+            updated = re.sub(pattern, marked.strip(), existing, flags=re.DOTALL)
+            filepath.write_text(updated, encoding="utf-8")
+        elif "llmwiki" not in existing.lower():
+            filepath.write_text(existing + marked, encoding="utf-8")
+    else:
+        filepath.write_text(llmwiki_section, encoding="utf-8")
 
 ```python
 """Generate AI agent schema files (CLAUDE.md, AGENTS.md).
@@ -4473,6 +4605,64 @@ llmwiki all                 # Full pipeline: ingest + build + export
 - `{wiki_path}/cross-references.json` — Code artifact relationship graph
 - `{wiki_path}/<page>.json` — Per-page structured metadata
 '''
+
+
+def generate_copilot_instructions(project_name: str, wiki_path: str, stats: dict) -> str:
+    """Generate .github/copilot-instructions.md for GitHub Copilot."""
+    total_pages = stats.get("total_pages", 0)
+    total_edges = stats.get("total_edges", 0)
+
+    return f'''# LLMWiki Knowledge Base — {project_name}
+
+This project has a structured knowledge base with {total_pages} indexed pages
+and {total_edges} cross-references generated by llmwiki.
+
+## Querying the Knowledge Base
+
+When you need to understand how code in this project works, use these tools:
+
+### Quick search
+Run `llmwiki search "<question>"` to find relevant pages.
+
+### SQL queries for precise lookups
+```bash
+# Find pages about a topic
+sqlite3 {wiki_path}/llmwiki.db "SELECT title, category FROM pages WHERE title LIKE '%<term>%' OR body_plain LIKE '%<term>%' LIMIT 10"
+
+# Find what references a specific file/class
+sqlite3 {wiki_path}/llmwiki.db "SELECT p.title FROM edges e JOIN pages p ON e.from_id = p.id WHERE e.to_id LIKE '%<name>%'"
+
+# Find most important pages
+sqlite3 {wiki_path}/llmwiki.db "SELECT title, importance_score FROM pages ORDER BY importance_score DESC LIMIT 10"
+```
+
+### Full context
+Read `{wiki_path}/llms.txt` for a quick overview of all indexed content.
+
+## Keeping the wiki current
+Run `llmwiki ingest && llmwiki build` after making code changes to update the knowledge base.
+'''
+
+
+def generate_gemini_md(project_name: str, wiki_path: str, stats: dict) -> str:
+    """Generate GEMINI.md for Gemini CLI."""
+    total_pages = stats.get("total_pages", 0)
+
+    return f'''# llmwiki — Knowledge Base for {project_name}
+
+This project has a searchable knowledge base with {total_pages} pages.
+
+## Query Commands
+
+- `llmwiki search "<query>"` — full-text search
+- `sqlite3 {wiki_path}/llmwiki.db "SELECT ..."` — SQL queries
+- `cat {wiki_path}/llms.txt` — overview of all content
+- `cat {wiki_path}/llms-full.txt` — full content dump
+
+## Rebuild
+
+`llmwiki all` — re-ingest sources and rebuild the wiki.
+'''
 ```
 
 - [ ] **Step 3: Wire into CLI init command**
@@ -4526,7 +4716,10 @@ git commit -m "feat: AI agent integration with CLAUDE.md and AGENTS.md generatio
 
 - generate_claude_md() with slash commands, query workflows, SQL examples
 - generate_agents_md() for Codex/Gemini/Copilot/Cursor compatibility
-- Auto-appends to existing CLAUDE.md/AGENTS.md without overwriting
-- Regenerated with real stats after every build"
+- generate_copilot_instructions() for .github/copilot-instructions.md
+- generate_gemini_md() for GEMINI.md
+- detect_agents() auto-detects which agents are in use
+- write_agent_schemas() writes/appends to all detected agent files
+- Idempotent: uses <!-- llmwiki:auto --> markers to replace on re-run"
 ```
 
