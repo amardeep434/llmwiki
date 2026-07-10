@@ -735,10 +735,87 @@ dependencies = [
 | Site serve startup | < 1 second |
 | Memory usage | < 512MB for 1000-page wiki |
 
-## 10. Future Extensions (out of scope for v1)
+## 10. AI Agent Integration
+
+LLMWiki is designed to be consumed by any AI coding agent — Claude Code, GitHub Copilot, Codex CLI, Gemini CLI, Cursor, etc. This is achieved through three mechanisms:
+
+### 10.1 Agent Schema Files (CLAUDE.md / AGENTS.md)
+
+When llmwiki is initialized in a project, it generates:
+
+- **`CLAUDE.md`** (or appends to existing) — instructions for Claude Code
+- **`AGENTS.md`** (or appends to existing) — agent-agnostic instructions for Codex CLI, Gemini, Copilot, etc.
+
+These files teach the AI agent how to use the wiki — what commands to run, how to query, how to interpret results. They are auto-generated from a template and include the project-specific wiki path and configuration.
+
+### 10.2 Slash Commands / CLI Queries
+
+AI agents can invoke llmwiki directly:
+
+| Command | What the agent does |
+|---------|-------------------|
+| `/wiki-query <question>` | `llmwiki search "<question>"` — queries SQLite FTS5, returns ranked results |
+| `/wiki-ingest` | `llmwiki ingest` — re-ingests changed source files |
+| `/wiki-build` | `llmwiki build` — rebuilds the static site |
+| `/wiki-lint` | `llmwiki lint` — checks for broken references, orphans |
+| `/wiki-graph` | `llmwiki graph` — rebuilds the knowledge graph |
+| `/wiki-stats` | `llmwiki stats` — prints inventory statistics |
+
+### 10.3 AI-Consumable File Formats
+
+The generated `site/` directory contains files specifically designed for AI consumption:
+
+| File | Purpose | How AI agents use it |
+|------|---------|---------------------|
+| `llmwiki.db` | SQLite FTS5 database | `sqlite3 site/llmwiki.db "SELECT ..."` for structured queries |
+| `llms.txt` | Short index per llmstxt.org | Quick overview of all content |
+| `llms-full.txt` | Full text dump (5MB cap) | Paste into LLM context for comprehensive queries |
+| `graph.jsonld` | JSON-LD knowledge graph | Machine-readable entity/relationship graph |
+| `<page>.json` | Per-page structured JSON | Programmatic access to individual page metadata + body |
+| `cross-references.json` | Full cross-ref graph | Navigate relationships between code artifacts |
+| `search-index.json` | Search index | Client-side or programmatic search |
+
+### 10.4 Agent Schema Template
+
+The generated `CLAUDE.md`/`AGENTS.md` follows this structure:
+
+```markdown
+# llmwiki — Knowledge Base for <ProjectName>
+
+## Quick Reference
+- Wiki location: <wiki_path>
+- Search: `llmwiki search "<query>"` or `sqlite3 <site>/llmwiki.db "SELECT ..."`
+- Full text: `cat <site>/llms-full.txt` (paste into context for broad questions)
+
+## Query Workflow
+1. For specific questions: `llmwiki search "provisioning workflow"`
+2. For relationship questions: query cross-references.json
+3. For broad context: read llms.txt for overview, then drill into specific pages
+
+## What's in the wiki
+- <N> source code pages (Java, XML, BeanShell, etc.)
+- <N> documentation pages (converted from PDF)
+- <N> cross-references linking code artifacts
+- <N> topic clusters auto-detected
+
+## How to find things
+- By category: browse /categories/ in the site
+- By importance: `sqlite3 site/llmwiki.db "SELECT title, importance_score FROM pages ORDER BY importance_score DESC LIMIT 20"`
+- By relationship: `sqlite3 site/llmwiki.db "SELECT p.title FROM edges e JOIN pages p ON e.to_id = p.id WHERE e.from_id LIKE '%CommonOperations%'"`
+- Full-text: `llmwiki search "approval assignment"`
+```
+
+### 10.5 Auto-Refresh Hook
+
+When installed as a development tool, llmwiki can auto-refresh the wiki when source files change:
+
+- **Git hook** — optional post-commit hook that runs `llmwiki ingest --incremental && llmwiki build`
+- **Watch mode** (future) — file system watcher for continuous rebuilds
+
+## 11. Future Extensions (out of scope for v1)
 
 - LLM enrichment via Ollama (auto-summaries, entity extraction)
-- MCP server for AI agent integration
+- MCP server for AI agent tool integration
 - Watch mode (auto-rebuild on file changes)
 - Obsidian vault overlay
 - Git integration (show file history, blame info)
