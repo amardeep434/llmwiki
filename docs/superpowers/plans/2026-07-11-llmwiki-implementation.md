@@ -4225,25 +4225,108 @@ git commit -m "test: end-to-end integration tests for full pipeline
 
 ---
 
-### Task 12: README & Final Polish
+### Task 12: Documentation Suite & Cross-Platform Polish
 
 **Files:**
 - Create: `README.md`
-- Verify: All tests pass
+- Create: `docs/architecture.md`
+- Create: `docs/getting-started.md`
+- Create: `docs/configuration.md`
+- Create: `docs/adapters.md`
+- Create: `docs/ai-integration.md`
+- Create: `docs/cross-references.md`
+- Create: `docs/cli-reference.md`
+- Create: `docs/faq.md`
+- Create: `CONTRIBUTING.md`
+- Create: `CHANGELOG.md`
+- Create: `setup.bat` (Windows)
+- Verify: All tests pass on current platform
 
 - [ ] **Step 1: Write README.md**
 
 Write a comprehensive README covering:
 - What llmwiki is (one paragraph)
-- Quick start (3 commands)
-- How it works (3-layer diagram)
-- CLI reference table
-- Configuration reference
-- Adapter list
-- AI exports documentation
+- Quick start for each platform (macOS/Linux: `./setup.sh`, Windows: `setup.bat`)
+- How it works (3-layer architecture diagram in ASCII)
+- CLI reference table (all 13 commands)
+- Feature highlights with screenshots/examples
+- Configuration quick reference
+- AI agent integration summary
 - Development setup
 
-- [ ] **Step 2: Run full test suite**
+- [ ] **Step 2: Write docs/architecture.md**
+
+Cover:
+- 3-layer data model with diagrams
+- Pipeline flow (ingest → build → serve)
+- Adapter system architecture
+- Cross-reference engine internals
+- Knowledge graph model
+- Search architecture (dual: client-side + SQLite FTS5)
+- Build system internals
+- How incremental builds work
+
+- [ ] **Step 3: Write docs/getting-started.md**
+
+Step-by-step tutorial:
+1. Installation (pip install, git clone, or download)
+2. Initialize with a project (`llmwiki init --source /path`)
+3. Add PDF documentation sources
+4. Run first build (`llmwiki all`)
+5. Browse the wiki (`llmwiki serve`)
+6. Search from CLI (`llmwiki search "query"`)
+7. Set up AI agent integration
+
+Include platform-specific instructions for Windows, macOS, Linux.
+
+- [ ] **Step 4: Write docs/configuration.md**
+
+Full reference for `llmwiki.json`:
+- Every field documented with type, default, and description
+- Example configs for different project types (Java, Python, TypeScript, mixed)
+- How to add PDF sources
+- Exclude patterns reference
+- Cross-reference tuning options
+
+- [ ] **Step 5: Write docs/adapters.md**
+
+Cover:
+- Built-in adapters table with what each extracts
+- Language support matrix (30+ languages)
+- How to write a custom adapter (BaseAdapter API, WikiPage dataclass)
+- Example: creating a Terraform adapter
+- How adapter auto-detection works
+
+- [ ] **Step 6: Write docs/ai-integration.md**
+
+Cover:
+- Which agent files are generated and when
+- How each AI agent discovers the wiki
+- SQL query cookbook (10+ example queries)
+- How to paste llms-full.txt into LLM context
+- How to use the JSON-LD graph programmatically
+
+- [ ] **Step 7: Write docs/cross-references.md, docs/cli-reference.md, docs/faq.md**
+
+- Cross-references: how edges are extracted, PageRank algorithm, cluster detection
+- CLI reference: every command with flags, examples, expected output
+- FAQ: common questions (how big can it get? how to exclude files? how to reset?)
+
+- [ ] **Step 8: Write CONTRIBUTING.md and CHANGELOG.md**
+
+- Contributing guide: setup, code style, testing, PR guidelines
+- Changelog: v0.1.0 initial release
+
+- [ ] **Step 9: Create setup.bat for Windows**
+
+```batch
+@echo off
+echo [llmwiki] Setting up...
+python -m pip install -e . 2>nul || python3 -m pip install -e .
+echo [llmwiki] Setup complete. Run: llmwiki init --source PATH
+```
+
+- [ ] **Step 10: Run full test suite**
 
 Run: `cd ~/llmwiki && pytest tests/ -v`
 Expected: All tests PASS

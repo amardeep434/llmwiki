@@ -31,6 +31,40 @@ Codebases accumulate vast amounts of knowledge — business logic in workflows, 
 - No collaborative editing (wiki pages can be hand-edited but no merge/conflict resolution)
 - No image extraction from PDFs (text-only for now)
 
+## 3.1 Cross-Platform Support
+
+LLMWiki runs on **Windows, macOS, and Linux**. All code uses:
+
+- `pathlib.Path` for all file operations (forward/back-slash agnostic)
+- `os.sep`-aware path joining — no hardcoded `/` in path construction
+- `encoding="utf-8"` on all file reads/writes (Windows defaults to locale encoding)
+- No Unix-specific tools (`sed`, `awk`, `grep`) — pure Python
+- Shell scripts (`setup.sh`, `build.sh`) have `.bat` equivalents for Windows
+- Python 3.9+ is the only system requirement (no system-level dependencies)
+
+**Platform-specific notes:**
+- Windows: Use `python` instead of `python3`, paths use backslashes but `pathlib` handles this
+- macOS: No Homebrew dependency — works with system Python 3.9+ or pyenv
+- Linux: Works with distro Python — no root required (install to user with `pip install --user`)
+
+## 3.2 Documentation
+
+The project includes comprehensive documentation:
+
+| Document | Purpose |
+|----------|---------|
+| `README.md` | Quick start, installation, basic usage |
+| `docs/architecture.md` | System design, 3-layer model, data flow diagrams |
+| `docs/getting-started.md` | Step-by-step tutorial for first-time setup |
+| `docs/configuration.md` | Full `llmwiki.json` reference with all options |
+| `docs/adapters.md` | How adapters work, built-in adapters, writing custom adapters |
+| `docs/ai-integration.md` | How AI agents use the wiki, CLAUDE.md/AGENTS.md format |
+| `docs/cross-references.md` | How the knowledge graph and cross-references work |
+| `docs/cli-reference.md` | Full CLI command reference with examples |
+| `docs/faq.md` | Common questions and troubleshooting |
+| `CONTRIBUTING.md` | How to contribute, code style, PR guidelines |
+| `CHANGELOG.md` | Version history |
+
 ## 4. Architecture
 
 ### 4.1 Three-Layer Data Model
