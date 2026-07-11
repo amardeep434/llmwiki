@@ -523,7 +523,11 @@ function initGraphToggle() {
       if (neuralEl) neuralEl.style.display = view === "neural" ? "block" : "none";
       if (view === "neural" && neuralEl && !neuralEl.getAttribute("data-init")) {
         neuralEl.setAttribute("data-init", "1");
-        initNeuralGraph(neuralEl);
+        if (typeof initNeuralVis === "function") {
+          initNeuralVis();
+        } else if (typeof initNeuralGraph === "function") {
+          initNeuralGraph(neuralEl);
+        }
       }
     });
   }

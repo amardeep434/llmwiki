@@ -1234,6 +1234,133 @@ def render_page_detail(
 # ===========================================================================
 
 
+_NEURAL_INIT_SCRIPT = r"""
+/* Neural Network view — vis-network with fixed layer layout */
+var neuralNet = null;
+
+function initNeuralVis() {
+  var container = document.getElementById("neural-container");
+  if (!container || typeof vis === "undefined" || neuralNet) return;
+
+  var CT_COLORS = {
+    "Source Code": "#10b981", "XML / Markup": "#f97316", "Inline Scripts": "#ec4899",
+    "Configuration": "#8b5cf6", "Documentation": "#06b6d4", "Token Registry": "#eab308",
+  };
+  function detectCT(n) {
+    var cat = (n.type || "").toLowerCase();
+    if (cat.indexOf("beanshell") === 0) return "Inline Scripts";
+    if (cat === "tokens") return "Token Registry";
+    if (cat.indexOf("connector-guides") === 0 || cat.indexOf("iiq-docs") === 0 || cat === "docs") return "Documentation";
+    if (cat.indexOf("com/") === 0 || cat.indexOf("sailpoint/") === 0 || cat.indexOf("bsh/") === 0) return "Source Code";
+    if (cat === "config" || cat.indexOf("xml") === 0) return "Configuration";
+    return "XML / Markup";
+  }
+
+  /* Group into columns by content type */
+  var groups = {};
+  rawNodes.forEach(function(n) {
+    var ct = detectCT(n);
+    if (!groups[ct]) groups[ct] = [];
+    groups[ct].push(n);
+  });
+  var colNames = Object.keys(groups).sort(function(a, b) { return groups[b].length - groups[a].length; });
+  colNames.forEach(function(cn) {
+    groups[cn].sort(function(a, b) { return (b.importance || 0) - (a.importance || 0); });
+  });
+
+  /* Assign fixed positions */
+  var colSpacing = 250;
+  var ySpacing = 16;
+  var maxPerCol = 120;
+
+  var visNodes = [];
+  colNames.forEach(function(cn, ci) {
+    var nodes = groups[cn];
+    var showCount = Math.min(nodes.length, maxPerCol);
+    var colX = ci * colSpacing;
+    var startY = -(showCount * ySpacing) / 2;
+    var color = CT_COLORS[cn] || "#71717a";
+    for (var ni = 0; ni < showCount; ni++) {
+      var n = nodes[ni];
+      var imp = n.importance || 0;
+      var cat = (n.type || "uncategorized").toLowerCase();
+      visNodes.push({
+        id: n.id,
+        label: (n.title || n.id).substring(0, 25),
+        x: colX, y: startY + ni * ySpacing,
+        fixed: true,
+        size: 3 + imp * 20,
+        color: { background: color, border: color,
+                 highlight: { background: "#ffffff", border: color },
+                 hover: { background: color, border: "#ffffff" } },
+        font: { color: "#a1a1aa", size: Math.max(7, 8 + imp * 6), face: "sans-serif" },
+        title: (n.title || n.id) + " \u2014 " + cn + "\nImportance: " + imp.toFixed(3) + "\nRefs: " + (n.in_degree || 0),
+        _url: "/categories/" + cat + "/" + n.id.split("/").pop() + ".html",
+      });
+    }
+  });
+
+  /* Dual-chromatic edges */
+  var nodeIds = {};
+  visNodes.forEach(function(n) { nodeIds[n.id] = true; });
+  var visEdges = rawEdges.filter(function(e) {
+    return nodeIds[e.from] && nodeIds[e.to];
+  }).map(function(e, i) {
+    var edgeColor = (i % 2 === 0) ? "rgba(16,185,129,0.15)" : "rgba(248,113,113,0.12)";
+    var highColor = (i % 2 === 0) ? "#10b981" : "#f87171";
+    return {
+      from: e.from, to: e.to,
+      color: { color: edgeColor, highlight: highColor, hover: highColor, opacity: 1.0 },
+      smooth: { type: "curvedCW", roundness: 0.12 + (i % 5) * 0.03 },
+      width: 0.5, hoverWidth: 2, selectionWidth: 3,
+    };
+  });
+
+  neuralNet = new vis.Network(container, {
+    nodes: new vis.DataSet(visNodes),
+    edges: new vis.DataSet(visEdges),
+  }, {
+    physics: false,
+    interaction: {
+      hover: true, tooltipDelay: 100,
+      zoomView: true, dragView: true,
+      selectConnectedEdges: true,
+      keyboard: { enabled: true },
+    },
+    nodes: { shape: "dot", borderWidth: 1.5 },
+    edges: { smooth: { type: "curvedCW", roundness: 0.15 }, selectionWidth: 3, hoverWidth: 2 },
+    layout: { randomSeed: 42 },
+  });
+
+  neuralNet.on("click", function(params) {
+    if (params.nodes.length > 0) {
+      var connected = neuralNet.getConnectedNodes(params.nodes[0]);
+      neuralNet.selectNodes([params.nodes[0]].concat(connected));
+    }
+  });
+  neuralNet.on("doubleClick", function(params) {
+    if (params.nodes.length > 0) {
+      var node = visNodes.find(function(n) { return n.id === params.nodes[0]; });
+      if (node && node._url) window.location.href = node._url;
+    }
+  });
+
+  setTimeout(function() { neuralNet.fit({ animation: { duration: 500 } }); }, 200);
+}
+
+/* Make it globally accessible for the graph toggle in script.js */
+window.initNeuralVis = initNeuralVis;
+
+/* Lazily init neural vis when tab is toggled */
+document.addEventListener("click", function(e) {
+  var btn = e.target.closest("[data-gview]");
+  if (btn && btn.dataset.gview === "neural") {
+    setTimeout(initNeuralVis, 100);
+  }
+});
+"""
+
+
 _GRAPH_INIT_SCRIPT = """\
 var TYPE_COLORS = {
   "rule": "#f59e0b", "workflow": "#6366f1", "application": "#10b981",
@@ -1400,9 +1527,22 @@ def render_graph_page(
         '</div>\n'
         f'<div class="graph-full__legend">\n{legend_html}</div>\n'
         '</div>\n',
-        # Neural graph container (hidden initially)
-        '<div id="graph-neural" class="neural-graph" '
-        'style="display:none;height:calc(100vh - var(--topbar-height, 48px) - 60px);"></div>\n',
+        # Neural graph container (hidden initially) — uses vis-network like force graph
+        '<div id="graph-neural" class="graph-full" '
+        'style="display:none;">\n'
+        '<div class="graph-full__header">\n'
+        '<div class="graph-full__stats">\n'
+        f'<span><span class="graph-full__stat-val">{n_nodes:,}</span> nodes</span>\n'
+        f'<span><span class="graph-full__stat-val">{n_edges:,}</span> edges</span>\n'
+        '</div>\n'
+        '<div style="font-size:11px;color:var(--ink-subtle);">'
+        'Click node to isolate \u00b7 Double-click to navigate \u00b7 Scroll to zoom</div>\n'
+        '</div>\n'
+        '<div class="graph-full__canvas">\n'
+        '<div id="neural-container" style="width:100%;height:calc(100vh - var(--topbar-height, 48px) - 120px);"></div>\n'
+        '</div>\n'
+        f'<div class="graph-full__legend">\n{legend_html}</div>\n'
+        '</div>\n',
         # Content type column data for neural graph
         f'<script>window.LLMWIKI_CT_COLUMNS={ct_columns_json};</script>\n',
         # vis-network CDN
@@ -1413,6 +1553,7 @@ def render_graph_page(
         'var rawNodes = ', nodes_json, ';\n',
         'var rawEdges = ', edges_json, ';\n',
         _GRAPH_INIT_SCRIPT,
+        _NEURAL_INIT_SCRIPT,
         '})();\n</script>\n',
         '</main>\n',
         '</div>\n',  # close .shell
