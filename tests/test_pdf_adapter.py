@@ -19,7 +19,7 @@ class TestPDFAdapter:
         f.write_text("hello")
         assert not self.adapter.can_handle(f)
 
-    @patch("llmwiki.adapters.pdf_adapter._convert_pdf")
+    @patch("llmwiki.adapters.pdf_adapter._convert_pdf_structured")
     def test_extract_pdf(self, mock_convert, tmp_path):
         f = tmp_path / "SailPoint Guide.pdf"
         f.write_bytes(b"%PDF-1.4 fake")
