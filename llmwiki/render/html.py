@@ -1460,7 +1460,7 @@ def render_categories_index(
     theme_labels_json: str = "",
     color_options: list = None,
 ) -> str:
-    """Render the /categories/ index page listing all categories."""
+    """Render the /categories/ index page listing all categories grouped by content type."""
     total = len(categories)
     parts = [
         page_head("All Categories", f"Browse all {total} categories",
@@ -1472,44 +1472,72 @@ def render_categories_index(
         '<main class="main">\n',
         breadcrumbs([("Home", "/"), ("Categories", "#")]),
         f'<div class="section">\n'
-        f'<div class="section__header"><h2 class="section__title">All Categories ({total})</h2></div>\n'
+        f'<div class="section__header"><h2 class="section__title">All Categories</h2>'
+        f'<span class="section__count">{total} categories · '
+        f'{sum(len(v) if isinstance(v, list) else 0 for v in categories.values())} pages</span></div>\n'
         f'</div>\n',
         '<div class="filter-bar">\n'
         '<span class="filter-bar__icon">\u2315</span>\n'
         '<input class="filter-bar__input" type="text" placeholder="Filter categories\u2026">\n'
         f'<span class="filter-bar__count">{total} items</span>\n'
         '</div>\n',
-        '<div class="cards-grid">\n',
     ]
 
-    sorted_cats = sorted(
-        categories.items(),
-        key=lambda item: len(item[1]) if isinstance(item[1], list) else 0,
-        reverse=True,
-    )
-    for cat_name, cat_pages in sorted_cats:
-        count = len(cat_pages) if isinstance(cat_pages, list) else 0
-        display = escape(_format_category_display(cat_name))
-        cat_url = escape(cat_name.lower())
-        base = cat_name.split("/")[0].lower()
-        badge_type = _TYPE_BADGE_MAP.get(base, "config")
-        color_map = {
-            "java": "var(--node-java)", "xml": "var(--node-xml)",
-            "beanshell": "var(--node-beanshell)", "config": "var(--node-config)",
-            "docs": "var(--node-docs)", "tokens": "var(--node-tokens)",
-        }
-        icon_color = color_map.get(badge_type, "var(--accent)")
-        parts.append(
-            f'<a href="/categories/{cat_url}/" '
-            f'class="card" data-tags="{escape(cat_name.lower())}">'
-            f'<div class="card__header">'
-            f'<span class="card__icon" style="background:{icon_color}"></span>'
-            f'<span class="card__title">{display}</span>'
-            f'<span class="card__count">{count}</span>'
-            f'</div></a>\n'
-        )
+    # Use content type groups if available (generic Tier 1 + Tier 2 structure)
+    if content_type_groups:
+        for ct_name, ct_data in content_type_groups.items():
+            icon = ct_data.get("icon", "📁")
+            color = ct_data.get("color", "node-config")
+            count = ct_data.get("count", 0)
+            desc = ct_data.get("desc", "")
+            subcats = ct_data.get("subcategories", {})
 
-    parts.append('</div>\n')
+            parts.append(
+                f'<div class="section" style="margin-top:var(--sp-8);">\n'
+                f'<div class="section__header">'
+                f'<h3 class="section__title">{icon} {escape(ct_name)}</h3>'
+                f'<span class="section__count">{count} pages</span></div>\n'
+            )
+            if desc:
+                parts.append(f'<p style="color:var(--ink-muted);font-size:13px;margin:var(--sp-2) 0 var(--sp-4);">{escape(desc)}</p>\n')
+
+            parts.append('<div class="cards-grid">\n')
+            for subcat_name, subcat_data in list(subcats.items())[:20]:
+                sub_count = subcat_data.get("count", 0)
+                sub_url = subcat_data.get("url", "#")
+                display = escape(subcat_name.replace("/", " › ").title())
+                parts.append(
+                    f'<a href="{escape(sub_url)}" '
+                    f'class="card" data-tags="{escape(subcat_name.lower())}">'
+                    f'<div class="card__header">'
+                    f'<span class="card__icon" style="background:var(--{color})"></span>'
+                    f'<span class="card__title">{display}</span>'
+                    f'<span class="card__count">{sub_count}</span>'
+                    f'</div></a>\n'
+                )
+            parts.append('</div>\n</div>\n')
+    else:
+        # Fallback: flat list (when content_type_groups not available)
+        parts.append('<div class="cards-grid">\n')
+        sorted_cats = sorted(
+            categories.items(),
+            key=lambda item: len(item[1]) if isinstance(item[1], list) else 0,
+            reverse=True,
+        )
+        for cat_name, cat_pages in sorted_cats:
+            count = len(cat_pages) if isinstance(cat_pages, list) else 0
+            display = escape(_format_category_display(cat_name))
+            cat_url = escape(cat_name.lower())
+            parts.append(
+                f'<a href="/categories/{cat_url}/" class="card">'
+                f'<div class="card__header">'
+                f'<span class="card__icon" style="background:var(--accent)"></span>'
+                f'<span class="card__title">{display}</span>'
+                f'<span class="card__count">{count}</span>'
+                f'</div></a>\n'
+            )
+        parts.append('</div>\n')
+
     parts.append('</main>\n')
     parts.append(render_graph_panel())
     parts.append('</div>\n')  # close .shell
