@@ -36,6 +36,9 @@ a:hover { color: var(--accent-hover); }
   grid-template-columns: var(--sidebar-w) 1fr var(--graph-w);
   height: 100vh; width: 100vw;
 }
+.shell.graph-collapsed { grid-template-columns: var(--sidebar-w) 1fr 0px; }
+.shell.graph-collapsed .graph-panel { display: none; }
+.shell.graph-open .graph-panel { display: flex; }
 
 /* ─── Top Bar ─── */
 .topbar {
