@@ -182,7 +182,7 @@ def _add_method_anchors(html_body: str) -> str:
 
     - Converts ``<code>methodName()</code>`` in list items to anchor links
     - Adds ``<span id="method-name">`` wrappers around method declarations
-      in code blocks so links can jump to them.
+      inside ``<pre><code>`` blocks so links can jump to them.
     """
     # Collect method names from the Methods/Functions section list items
     method_re = re.compile(r'<li><code>(\w+)\(\)</code></li>')
@@ -190,23 +190,31 @@ def _add_method_anchors(html_body: str) -> str:
     if not methods:
         return html_body
 
-    # Replace list items with anchor links
+    # 1. First add anchors inside <pre><code>...</code></pre> blocks
+    def _add_anchors_in_pre(match: re.Match) -> str:
+        pre_content = match.group(0)
+        for m in methods:
+            # Only replace the first occurrence of each method name in this block
+            pre_content = re.sub(
+                rf'(\b{re.escape(m)}\b)(\s*\()',
+                rf'<span id="method-{m}" class="method-anchor">\1</span>\2',
+                pre_content,
+                count=1,
+            )
+        return pre_content
+
+    html_body = re.sub(
+        r'<pre><code[^>]*>.*?</code></pre>',
+        _add_anchors_in_pre,
+        html_body,
+        flags=re.DOTALL,
+    )
+
+    # 2. Then convert list items to anchor links (after pre blocks are done)
     for m in methods:
         html_body = html_body.replace(
             f'<li><code>{m}()</code></li>',
             f'<li><a href="#method-{m}" class="method-link"><code>{m}()</code></a></li>',
-        )
-
-    # Add anchor spans in code blocks for each method declaration
-    for m in methods:
-        # Match the method name in code content (first occurrence in a code block)
-        # Use a pattern that finds the method name preceded by typical declaration keywords
-        html_body = re.sub(
-            rf'(<code[^>]*>(?:(?!</code>).)*?)(\b{re.escape(m)}\b)(\s*\()',
-            rf'\1<span id="method-{m}" class="method-anchor">\2</span>\3',
-            html_body,
-            count=1,
-            flags=re.DOTALL,
         )
 
     return html_body

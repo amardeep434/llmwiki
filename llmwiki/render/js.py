@@ -1087,6 +1087,7 @@ function initPaletteInput() {
 
 /* ===== Init ===== */
 document.addEventListener("DOMContentLoaded", function() {
+  fetchSearchIndex();
   initHighlight();
   initCopyButtons();
   initFilterBar();
