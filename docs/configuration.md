@@ -60,13 +60,39 @@ LLMWiki is configured via `llmwiki.json`, created automatically by `llmwiki init
 
 ### `sources`
 
-Array of source directories to ingest. Each entry:
+Array of source directories to ingest. `llmwiki init` creates one entry pointing at the `--source` path. You can add more to include additional codebases, documentation directories, or separate repos.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `path` | string | *(required)* | Absolute or relative path to the source directory |
 | `type` | string | `"auto"` | Documented adapter selector, but per-source type filtering is not currently implemented in the ingest pipeline |
 | `exclude` | string[] | *(see defaults)* | Patterns to exclude from this source |
+
+**Multi-source example:**
+
+```json
+{
+  "sources": [
+    {
+      "path": "/home/user/projects/my-app/src",
+      "type": "auto",
+      "exclude": ["node_modules", ".git", "*.min.js"]
+    },
+    {
+      "path": "/home/user/projects/my-app/docs",
+      "type": "auto",
+      "exclude": [".git"]
+    },
+    {
+      "path": "/home/user/projects/shared-libs",
+      "type": "auto",
+      "exclude": ["node_modules", ".git", "test"]
+    }
+  ]
+}
+```
+
+Each source directory is scanned by all adapters (source-code, XML, markdown, config). Pages from different sources are merged into the same wiki with cross-references between them.
 
 **Exclusion patterns** support two formats:
 - **Glob patterns** (`*.min.js`, `*.pyc`): matched against filenames

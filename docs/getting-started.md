@@ -86,7 +86,25 @@ llmwiki init --source ~/projects/my-app --name "My App" --output ~/wikis/my-app
 
 ---
 
-## Step 3: Add PDF Documentation (Optional)
+## Step 3: Configure Sources (Optional)
+
+After init, edit `.llmwiki/llmwiki.json` to add additional source directories or documentation:
+
+```json
+{
+  "sources": [
+    { "path": "/home/user/projects/my-app", "type": "auto", "exclude": ["node_modules", ".git"] },
+    { "path": "/home/user/projects/my-app/docs", "type": "auto", "exclude": [".git"] }
+  ]
+}
+```
+
+- **`sources[].path`** — absolute path to a codebase or docs directory. Each is scanned by all adapters (source-code, XML, markdown, config).
+- Add as many entries as you need — pages from all sources are merged into one wiki with cross-references between them.
+
+---
+
+## Step 4: Add PDF Documentation (Optional)
 
 To include PDF files, edit `llmwiki.json` and add entries to `pdf_sources`:
 
@@ -104,7 +122,7 @@ To include PDF files, edit `llmwiki.json` and add entries to `pdf_sources`:
 
 ---
 
-## Step 4: Ingest
+## Step 5: Ingest
 
 Extract content from all configured sources:
 
@@ -131,7 +149,7 @@ llmwiki ingest --force
 
 ---
 
-## Step 4b: Clean (When Needed)
+## Step 5b: Clean (When Needed)
 
 If you need to start fresh or clear out stale data:
 
@@ -148,7 +166,7 @@ llmwiki clean --all
 
 ---
 
-## Step 5: Build the Site
+## Step 6: Build the Site
 
 Generate the static HTML site, knowledge graph, and search index:
 
@@ -186,7 +204,7 @@ Available built-in themes: `emerald-dark` (default), `vodafone`. Run `llmwiki th
 
 ---
 
-## Step 6: Serve and Browse
+## Step 7: Serve and Browse
 
 Start the local development server:
 
@@ -215,7 +233,7 @@ llmwiki serve --port 3000 --host 0.0.0.0
 
 ---
 
-## Step 7: Search
+## Step 8: Search
 
 ### In the Browser
 
@@ -242,7 +260,7 @@ Found 3 results for: database connection
 
 ---
 
-## Step 8: Run Everything at Once
+## Step 9: Run Everything at Once
 
 The `all` command runs the full pipeline in sequence:
 

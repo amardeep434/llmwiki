@@ -21,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # init
     p_init = sub.add_parser("init", help="Initialize a new llmwiki project")
-    p_init.add_argument("--source", required=True, help="Path to source codebase")
+    p_init.add_argument("--source", default=None, help="Path to source codebase (prompted if not given)")
     p_init.add_argument("--name", help="Project name (auto-detected if not given)")
     p_init.add_argument("--output", default=None, help="Where to create the wiki (default: <source>/.llmwiki/)")
 
@@ -110,20 +110,83 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _cmd_init(args) -> int:
-    """Initialize a new llmwiki project."""
+    """Initialize a new llmwiki project with interactive setup."""
     from llmwiki.config import create_default_config, save_config
     from llmwiki.adapters import detect_adapters
 
-    source = Path(args.source).resolve()
+    print("═" * 50)
+    print("  LLMWiki Project Setup")
+    print("═" * 50)
+
+    # 1. Source code path
+    if args.source:
+        source = Path(args.source).resolve()
+    else:
+        print("\n📁 Source Code Path")
+        print("   Enter the root directory of your codebase:")
+        raw = input("   > ").strip()
+        if not raw:
+            print("Error: source path is required", file=sys.stderr)
+            return 1
+        source = Path(raw).expanduser().resolve()
+
     if not source.exists():
         print(f"Error: source path does not exist: {source}", file=sys.stderr)
         return 1
 
-    output = Path(args.output).resolve() if args.output else source / ".llmwiki"
-    name = args.name or source.name
+    # 2. Project name
+    name = args.name
+    if not name:
+        default_name = source.name
+        print(f"\n📝 Project Name (default: {default_name})")
+        raw_name = input(f"   > ").strip()
+        name = raw_name or default_name
 
-    # Detect adapters
-    print(f"🔍 Scanning {source}...")
+    # 3. Additional source directories
+    sources = [{"path": str(source), "type": "auto", "exclude": []}]
+    print(f"\n📂 Additional Source Directories")
+    print("   Add extra directories (e.g. shared libs, separate docs repos).")
+    print("   Press Enter with empty path when done.")
+    while True:
+        extra = input("   Additional path (or Enter to skip): ").strip()
+        if not extra:
+            break
+        extra_path = Path(extra).expanduser().resolve()
+        if not extra_path.exists():
+            print(f"   ⚠ Path does not exist: {extra_path}, skipping")
+            continue
+        sources.append({"path": str(extra_path), "type": "auto", "exclude": []})
+        print(f"   ✓ Added: {extra_path}")
+
+    # 4. PDF documentation
+    pdf_sources = []
+    print(f"\n📄 PDF Documentation")
+    print("   Add PDF files or directories containing PDFs.")
+    print("   Press Enter with empty path when done.")
+    while True:
+        pdf_path = input("   PDF path (or Enter to skip): ").strip()
+        if not pdf_path:
+            break
+        pdf_resolved = Path(pdf_path).expanduser().resolve()
+        if not pdf_resolved.exists():
+            print(f"   ⚠ Path does not exist: {pdf_resolved}, skipping")
+            continue
+        label = input(f"   Category label for '{pdf_resolved.name}' (default: docs): ").strip() or "docs"
+        pdf_sources.append({"path": str(pdf_resolved), "label": label})
+        print(f"   ✓ Added: {pdf_resolved} → [{label}]")
+
+    # 5. Output directory
+    output = Path(args.output).resolve() if args.output else source / ".llmwiki"
+
+    print(f"\n{'─' * 50}")
+    print(f"  Project:  {name}")
+    print(f"  Sources:  {len(sources)} director{'y' if len(sources) == 1 else 'ies'}")
+    print(f"  PDFs:     {len(pdf_sources)} entr{'y' if len(pdf_sources) == 1 else 'ies'}")
+    print(f"  Output:   {output}")
+    print(f"{'─' * 50}")
+
+    # Detect adapters for primary source
+    print(f"\n🔍 Scanning {source}...")
     detected = detect_adapters(source)
     for adapter_name, files in detected.items():
         print(f"  Found {len(files)} files for adapter '{adapter_name}'")
@@ -132,11 +195,19 @@ def _cmd_init(args) -> int:
     for d in ["raw", "wiki", "site"]:
         (output / d).mkdir(parents=True, exist_ok=True)
 
-    # Create config
+    # Create config with all collected sources
+    from llmwiki.config import DEFAULT_EXCLUDE
     config = create_default_config(name, str(source))
+    # Replace sources with all collected entries
+    for s in sources:
+        if not s["exclude"]:
+            s["exclude"] = list(DEFAULT_EXCLUDE)
+    config["sources"] = sources
+    config["pdf_sources"] = pdf_sources
+
     cfg_path = output / "llmwiki.json"
     save_config(config, cfg_path)
-    print(f"\n✅ Created llmwiki.json at {cfg_path}")
+    print(f"\n✅ Created {cfg_path}")
     print(f"✅ Created raw/, wiki/, site/ in {output}")
 
     # Generate agent schema files
@@ -149,7 +220,12 @@ def _cmd_init(args) -> int:
     for f in written:
         print(f"✅ Generated {f}")
 
-    print(f"\nRun `cd {output} && llmwiki ingest` to extract content, then `llmwiki build` to generate the site.")
+    print(f"\n🚀 Next steps:")
+    print(f"   cd {output}")
+    print(f"   llmwiki ingest     # Extract content from sources")
+    print(f"   llmwiki build      # Generate the static site")
+    print(f"   llmwiki serve      # Preview at http://127.0.0.1:8765")
+    print(f"   llmwiki all        # Or run everything at once")
     return 0
 
 
