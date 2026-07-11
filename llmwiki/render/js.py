@@ -412,17 +412,24 @@ function initFilterBar() {
   var countEl = document.querySelector(".filter-bar__count");
   var bar = input.closest(".filter-bar");
 
-  /* Create dropdown for global search results */
-  var dropdown = document.createElement("div");
-  dropdown.className = "filter-dropdown";
-  dropdown.style.display = "none";
-  if (bar) bar.style.position = "relative";
-  (bar || input.parentNode).appendChild(dropdown);
+  /* Find the content area to inject results into (cards grid or table) */
+  var mainEl = bar ? bar.parentElement : null;
+  var cardsGrid = mainEl ? mainEl.querySelector(".cards-grid") : null;
+  var isCardsPage = !!cardsGrid;
+
+  /* Create inline results container (for cards pages like /categories/) */
+  var inlineResults = null;
+  if (isCardsPage && mainEl) {
+    inlineResults = document.createElement("div");
+    inlineResults.className = "search-results-inline";
+    inlineResults.style.display = "none";
+    /* Insert after the filter bar */
+    bar.parentNode.insertBefore(inlineResults, bar.nextSibling);
+  }
 
   function updateResults(query) {
-    /* 1. Filter table rows + cards (existing behavior) */
+    /* Filter table rows (for category detail pages with tables) */
     var rows = document.querySelectorAll("table tbody tr");
-    var cards = document.querySelectorAll(".cards-grid .card");
     var tableVisible = 0;
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -432,6 +439,64 @@ function initFilterBar() {
       row.classList.toggle("hidden", !show);
       if (show) tableVisible++;
     }
+
+    /* Cards-page behavior: show inline search results, hide cards grid */
+    if (isCardsPage && inlineResults) {
+      if (!query || query.length < 2) {
+        /* No query — show cards, hide results */
+        inlineResults.style.display = "none";
+        /* Show all card sections */
+        var sections = mainEl.querySelectorAll(".section");
+        for (var s = 0; s < sections.length; s++) sections[s].style.display = "";
+        if (countEl) countEl.textContent = "";
+        return;
+      }
+
+      /* Have a query — hide card sections, show inline results */
+      var sections = mainEl.querySelectorAll(".section");
+      for (var s = 0; s < sections.length; s++) sections[s].style.display = "none";
+
+      var results = filterEntries(query);
+      if (countEl) countEl.textContent = results.length + " results";
+
+      if (results.length === 0) {
+        inlineResults.innerHTML = '<div class="search-results-inline__empty">No pages matching \u201c' + query.replace(/</g,"&lt;") + '\u201d</div>';
+        inlineResults.style.display = "block";
+        return;
+      }
+
+      var html = '<div class="search-results-inline__header">'
+        + '<span class="search-results-inline__label">All pages matching \u201c' + query.replace(/</g,"&lt;") + '\u201d</span>'
+        + '<span class="search-results-inline__count">' + results.length + ' results</span>'
+        + '</div>';
+      html += '<div class="search-results-inline__list">';
+      results.forEach(function(entry) {
+        var title = (entry.title || entry.id || "").replace(/</g, "&lt;");
+        var cat = (entry.category || "").replace(/</g, "&lt;").replace(/\//g, " \u203a ");
+        var url = entry.url || "#";
+        var imp = entry.importance || 0;
+        var impPct = Math.round(imp * 100);
+        var tags = (entry.tags || []).filter(function(t) { return !t.startsWith("method:"); }).slice(0, 4).map(function(t) {
+          return '<span class="tag">' + t.replace(/</g, "&lt;") + '</span>';
+        }).join(" ");
+        html += '<a href="' + url + '" class="search-results-inline__item">'
+          + '<div class="search-results-inline__main">'
+          + '<span class="search-results-inline__title">' + title + '</span>'
+          + '<span class="search-results-inline__tags">' + tags + '</span>'
+          + '</div>'
+          + '<div class="search-results-inline__meta">'
+          + '<span class="search-results-inline__cat">' + cat + '</span>'
+          + '</div>'
+          + '</a>';
+      });
+      html += '</div>';
+      inlineResults.innerHTML = html;
+      inlineResults.style.display = "block";
+      return;
+    }
+
+    /* Non-cards pages: filter cards too */
+    var cards = document.querySelectorAll(".cards-grid .card");
     for (var j = 0; j < cards.length; j++) {
       var card = cards[j];
       var cText = card.textContent.toLowerCase();
@@ -441,50 +506,13 @@ function initFilterBar() {
       if (cShow) tableVisible++;
     }
     if (countEl) countEl.textContent = tableVisible + " items";
-
-    /* 2. Show global search dropdown */
-    if (!query || query.length < 2) {
-      dropdown.style.display = "none";
-      return;
-    }
-    var results = filterEntries(query);
-    if (results.length === 0) {
-      dropdown.innerHTML = '<div class="filter-dropdown__empty">No pages found</div>';
-      dropdown.style.display = "block";
-      return;
-    }
-    var html = '<div class="filter-dropdown__label">All pages matching \u201c' + query + '\u201d</div>';
-    results.slice(0, 12).forEach(function(entry) {
-      var title = (entry.title || entry.id || "").replace(/</g, "&lt;");
-      var cat = (entry.category || "").replace(/</g, "&lt;");
-      var url = entry.url || "#";
-      var tags = (entry.tags || []).slice(0, 3).map(function(t) {
-        return '<span class="filter-dropdown__tag">' + t.replace(/</g, "&lt;") + '</span>';
-      }).join("");
-      html += '<a href="' + url + '" class="filter-dropdown__item">'
-        + '<span class="filter-dropdown__title">' + title + '</span>'
-        + '<span class="filter-dropdown__cat">' + cat.replace(/\//g, " \u203a ") + '</span>'
-        + (tags ? '<span class="filter-dropdown__tags">' + tags + '</span>' : '')
-        + '</a>';
-    });
-    if (results.length > 12) {
-      html += '<div class="filter-dropdown__more">' + (results.length - 12) + ' more results\u2026</div>';
-    }
-    dropdown.innerHTML = html;
-    dropdown.style.display = "block";
   }
 
   input.addEventListener("input", function() {
-    updateResults(input.value.toLowerCase());
-  });
-  input.addEventListener("focus", function() {
-    if (input.value.length >= 2) updateResults(input.value.toLowerCase());
-  });
-  document.addEventListener("click", function(e) {
-    if (!bar || !bar.contains(e.target)) dropdown.style.display = "none";
+    updateResults(input.value.toLowerCase().trim());
   });
   input.addEventListener("keydown", function(e) {
-    if (e.key === "Escape") { dropdown.style.display = "none"; input.blur(); }
+    if (e.key === "Escape") { input.value = ""; updateResults(""); input.blur(); }
   });
 }
 
