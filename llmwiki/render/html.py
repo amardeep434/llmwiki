@@ -322,11 +322,35 @@ def nav_bar(active: str = "", color_options: list = None) -> str:
 # ===========================================================================
 
 
+def _sidebar_pages_for_subcat(
+    sc_name: str, all_categories: dict | None,
+) -> list[dict]:
+    """Return top pages matching a subcategory prefix from all_categories."""
+    if not all_categories:
+        return []
+    sc_lower = sc_name.lower()
+    matched: list[dict] = []
+    for cat, pages_list in all_categories.items():
+        if not isinstance(pages_list, list):
+            continue
+        if cat.lower() == sc_lower or cat.lower().startswith(sc_lower + "/"):
+            matched.extend(pages_list)
+    # Sort by importance, return top entries
+    matched.sort(key=lambda p: p.get("importance", 0), reverse=True)
+    return matched
+
+
 def render_sidebar(categories: dict, current_category: str = "",
                    current_url: str = "", clusters: list = None,
                    total_pages: int = 0,
-                   content_type_groups: dict | None = None) -> str:
-    """Generate left sidebar with collapsible content type tree."""
+                   content_type_groups: dict | None = None,
+                   all_categories: dict | None = None) -> str:
+    """Generate left sidebar with collapsible content type tree.
+
+    Args:
+        all_categories: Full ``{category: [page_dicts]}`` mapping used to
+            render inline page previews for tier-2 subcategory items.
+    """
     # Calculate total pages if not provided
     if not total_pages:
         for cat_pages in categories.values():
@@ -414,12 +438,39 @@ def render_sidebar(categories: dict, current_category: str = "",
                     sc_display = escape(_format_category_display(sc_name))
                     sc_url = escape(sc_data.get("url", "#"))
                     sc_active = " sidebar__item--active" if current_category and sc_name.lower() == current_category.lower() else ""
-                    parts.append(
-                        f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2{sc_active}">'
-                        f'<span class="sidebar__item-icon">\u00B7</span>'
-                        f'<span>{sc_display}</span>'
-                        f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
-                    )
+                    # Gather inline page previews from all_categories
+                    sc_pages = _sidebar_pages_for_subcat(sc_name, all_categories)
+                    if sc_pages:
+                        parts.append(
+                            f'<details class="sidebar__ct-subdetail">\n'
+                            f'<summary class="sidebar__item sidebar__ct-tier2{sc_active}">'
+                            f'<span class="sidebar__item-icon">\u25B8</span>'
+                            f'<span>{sc_display}</span>'
+                            f'<span class="sidebar__item-count">{sc_data["count"]}</span>'
+                            f'</summary>\n'
+                        )
+                        for sp in sc_pages[:5]:
+                            sp_title = escape(sp.get("title", "?")[:30])
+                            sp_url = escape(sp.get("url", "#"))
+                            parts.append(
+                                f'<a href="{sp_url}" class="sidebar__item sidebar__ct-tier3">'
+                                f'<span class="sidebar__item-icon">\u00B7</span>'
+                                f'<span>{sp_title}</span></a>\n'
+                            )
+                        if sc_data["count"] > 5:
+                            parts.append(
+                                f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier3">'
+                                f'<span class="sidebar__item-icon">\u2026</span>'
+                                f'<span>{sc_data["count"] - 5} more</span></a>\n'
+                            )
+                        parts.append('</details>\n')
+                    else:
+                        parts.append(
+                            f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2{sc_active}">'
+                            f'<span class="sidebar__item-icon">\u00B7</span>'
+                            f'<span>{sc_display}</span>'
+                            f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
+                        )
                 # "show all" for remaining visible + hidden
                 remaining = visible[8:] + hidden
                 if remaining:
@@ -580,6 +631,7 @@ def render_dashboard(
     *,
     clusters: list = None,
     content_type_groups: dict | None = None,
+    all_categories: dict | None = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -593,7 +645,8 @@ def render_dashboard(
         _topbar("home", color_options),
         render_sidebar(categories, clusters=clusters or [],
                        total_pages=stats.get("total_pages", 0),
-                       content_type_groups=content_type_groups),
+                       content_type_groups=content_type_groups,
+                       all_categories=all_categories or categories),
         '<main class="main">\n',
     ]
 
@@ -800,6 +853,8 @@ def render_category_index(
     category: str, pages: list,
     *,
     clusters: list = None,
+    total_pages: int = 0,
+    content_type_groups: dict | None = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -815,7 +870,9 @@ def render_category_index(
                   color_options=color_options),
         '<div class="shell">\n',
         _topbar("categories", color_options),
-        render_sidebar(cat_summary, category, clusters=clusters or []),
+        render_sidebar(cat_summary, category, clusters=clusters or [],
+                       total_pages=total_pages,
+                       content_type_groups=content_type_groups),
         '<main class="main">\n',
         breadcrumbs([
             ("Home", "/"),
@@ -1461,25 +1518,27 @@ def render_categories_index(
     color_options: list = None,
 ) -> str:
     """Render the /categories/ index page listing all categories grouped by content type."""
-    total = len(categories)
+    total_cats = len(categories)
+    total_pages = sum(len(v) if isinstance(v, list) else 0 for v in categories.values())
     parts = [
-        page_head("All Categories", f"Browse all {total} categories",
+        page_head("All Categories", f"Browse all {total_cats} categories",
                   themes_json=themes_json, theme_labels_json=theme_labels_json,
                   color_options=color_options),
         '<div class="shell">\n',
         _topbar("categories", color_options),
-        render_sidebar(categories, content_type_groups=content_type_groups),
+        render_sidebar(categories, content_type_groups=content_type_groups,
+                       total_pages=total_pages, all_categories=categories),
         '<main class="main">\n',
         breadcrumbs([("Home", "/"), ("Categories", "#")]),
         f'<div class="section">\n'
         f'<div class="section__header"><h2 class="section__title">All Categories</h2>'
-        f'<span class="section__count">{total} categories · '
-        f'{sum(len(v) if isinstance(v, list) else 0 for v in categories.values())} pages</span></div>\n'
+        f'<span class="section__count">{total_cats} categories · '
+        f'{total_pages} pages</span></div>\n'
         f'</div>\n',
         '<div class="filter-bar">\n'
         '<span class="filter-bar__icon">\u2315</span>\n'
         '<input class="filter-bar__input" type="text" placeholder="Filter categories\u2026">\n'
-        f'<span class="filter-bar__count">{total} items</span>\n'
+        f'<span class="filter-bar__count">{total_cats} items</span>\n'
         '</div>\n',
     ]
 

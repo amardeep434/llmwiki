@@ -689,7 +689,22 @@ function renderNeuralGraph(container, graph) {
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, w, h);
 
-  /* Draw edges as bezier curves — show ALL edges that connect visible nodes */
+  /* Star-field background for cosmic feel */
+  if (isDark) {
+    for (var si = 0; si < 120; si++) {
+      var sx = (Math.sin(si * 127.1 + 0.5) * 0.5 + 0.5) * w;
+      var sy = (Math.cos(si * 83.3 + 0.7) * 0.5 + 0.5) * h;
+      var sr = 0.3 + (si % 5) * 0.15;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = 0.08 + (si % 3) * 0.04;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* Draw edges as bezier curves with glow */
   var posIdSet = {};
   Object.keys(nodePositions).forEach(function(id) { posIdSet[id] = true; });
 
@@ -699,13 +714,26 @@ function renderNeuralGraph(container, graph) {
     var pb = nodePositions[e.to];
     if (!pa || !pb) return;
     edgeCount++;
-    ctx.beginPath();
     var cpx1 = pa.x + (pb.x - pa.x) * 0.4;
     var cpx2 = pa.x + (pb.x - pa.x) * 0.6;
+    var imp = Math.max(pa.node.importance || 0, pb.node.importance || 0);
+
+    /* Outer glow pass for important edges */
+    if (imp > 0.2) {
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.bezierCurveTo(cpx1, pa.y, cpx2, pb.y, pb.x, pb.y);
+      ctx.strokeStyle = pa.color;
+      ctx.globalAlpha = (edgeBaseAlpha * 0.4) + imp * 0.08;
+      ctx.lineWidth = 2.5 + imp * 3;
+      ctx.stroke();
+    }
+
+    /* Core edge */
+    ctx.beginPath();
     ctx.moveTo(pa.x, pa.y);
     ctx.bezierCurveTo(cpx1, pa.y, cpx2, pb.y, pb.x, pb.y);
     ctx.strokeStyle = pa.color;
-    var imp = Math.max(pa.node.importance || 0, pb.node.importance || 0);
     ctx.globalAlpha = edgeBaseAlpha + imp * 0.25;
     ctx.lineWidth = 0.3 + imp * 0.8;
     ctx.stroke();
@@ -748,26 +776,45 @@ function renderNeuralGraph(container, graph) {
     ctx.fillText(label, colX, 53);
   });
 
-  /* Draw nodes with glow */
+  /* Draw nodes with multi-layer glow */
   var clickTargets = [];
   Object.keys(nodePositions).forEach(function(id) {
     var p = nodePositions[id];
     var imp = p.node.importance || 0;
 
-    if (imp > 0.3) {
+    /* Outer ambient glow */
+    if (imp > 0.15) {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * 2.5, 0, 2 * Math.PI);
+      ctx.arc(p.x, p.y, p.r * 4, 0, 2 * Math.PI);
       ctx.fillStyle = p.color;
-      ctx.globalAlpha = 0.1;
+      ctx.globalAlpha = 0.03 + imp * 0.05;
       ctx.fill();
-      ctx.globalAlpha = 1;
     }
 
+    /* Inner glow halo */
+    if (imp > 0.05) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 2.2, 0, 2 * Math.PI);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = 0.08 + imp * 0.12;
+      ctx.fill();
+    }
+
+    /* Core node */
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
     ctx.fillStyle = p.color;
-    ctx.globalAlpha = 0.4 + imp * 0.55;
+    ctx.globalAlpha = 0.5 + imp * 0.5;
     ctx.fill();
+
+    /* Bright center dot for high-importance nodes */
+    if (imp > 0.4) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 0.4, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
+      ctx.globalAlpha = 0.3 + imp * 0.3;
+      ctx.fill();
+    }
     ctx.globalAlpha = 1;
 
     clickTargets.push({ id: id, x: p.x, y: p.y, r: p.r, type: p.colName, title: p.node.title, cat: (p.node.type || "uncategorized").toLowerCase() });
@@ -828,6 +875,37 @@ function renderNeuralGraph(container, graph) {
       canvas.style.cursor = "default";
     }
   });
+
+  /* Subtle pulse animation using an overlay canvas for breathing glow */
+  var highImpNodes = Object.keys(nodePositions).filter(function(id) {
+    return (nodePositions[id].node.importance || 0) > 0.3;
+  });
+  if (highImpNodes.length > 0 && isDark) {
+    var overlay = document.createElement("canvas");
+    overlay.width = canvas.width;
+    overlay.height = canvas.height;
+    overlay.style.cssText = "position:absolute;top:0;left:0;width:" + w + "px;height:" + h + "px;pointer-events:none;";
+    container.appendChild(overlay);
+    var octx = overlay.getContext("2d");
+    octx.scale(dpr, dpr);
+    var pulsePhase = 0;
+    (function animatePulse() {
+      pulsePhase += 0.02;
+      var breath = 0.5 + 0.5 * Math.sin(pulsePhase);
+      octx.clearRect(0, 0, w, h);
+      highImpNodes.forEach(function(id) {
+        var p = nodePositions[id];
+        var imp = p.node.importance || 0;
+        octx.beginPath();
+        octx.arc(p.x, p.y, p.r * 3.5 + breath * 4, 0, 2 * Math.PI);
+        octx.fillStyle = p.color;
+        octx.globalAlpha = 0.03 + breath * 0.04 * imp;
+        octx.fill();
+        octx.globalAlpha = 1;
+      });
+      requestAnimationFrame(animatePulse);
+    })();
+  }
 }
 
 /* ===== Event Delegation ===== */

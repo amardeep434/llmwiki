@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 from pathlib import Path
 
@@ -172,10 +173,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     dash_stats = dict(graph["stats"])
     dash_stats["last_build"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+    # Compute recent changes by comparing page hashes to previous build
+    recent_changes = _compute_recent_changes(root, pages)
+
     dashboard_html = render_dashboard(
-        dash_stats, [], content_type_groups, top_pages,
+        dash_stats, recent_changes, content_type_groups, top_pages,
         clusters=graph.get("clusters", []),
         content_type_groups=content_type_groups,
+        all_categories=categories,
         **theme_kwargs,
     )
     (site_dir / "index.html").write_text(dashboard_html, encoding="utf-8")
@@ -199,6 +204,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         # Category index page
         idx_html = render_category_index(cat, cat_pages,
                                          clusters=graph.get("clusters", []),
+                                         total_pages=len(pages),
+                                         content_type_groups=content_type_groups,
                                          **theme_kwargs)
         (cat_path / "index.html").write_text(idx_html, encoding="utf-8")
 
@@ -237,6 +244,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # and generate an index.html so links don't show file-browser listings.
     _generate_subcategory_indexes(
         categories, cat_dir, content_type_groups, graph, theme_kwargs,
+        total_pages=len(pages),
     )
 
     # 11. Build search index → search-index.json
@@ -269,6 +277,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     history = _load_build_history(history_path)
     build_entry = {
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "type": "full" if full else "incremental",
         "total_pages": len(pages),
         "total_categories": len(categories),
         "total_edges": graph["stats"]["total_edges"],
@@ -276,6 +285,10 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     }
     history.append(build_entry)
     history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+    # Also copy to site/ so changelog is accessible via browser
+    (site_dir / "build-history.json").write_text(
+        json.dumps(history, indent=2), encoding="utf-8"
+    )
 
     changelog_html = render_changelog_page(history, **theme_kwargs)
     (site_dir / "changelog.html").write_text(changelog_html, encoding="utf-8")
@@ -289,6 +302,67 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         "last_build": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     return result
+
+
+def _compute_recent_changes(root: Path, pages: dict) -> list:
+    """Compare current pages to previous build state to find changes.
+
+    Maintains a ``.llmwiki-pages-state.json`` file at *root* that maps
+    page IDs to content hashes.  On each call, diffs old vs new to
+    produce a list of ``{title, url, action, type, time_ago}`` dicts.
+    """
+    state_path = root / ".llmwiki-pages-state.json"
+    old_state: dict[str, str] = {}
+    if state_path.exists():
+        try:
+            old_state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            old_state = {}
+
+    # Build current state: page_id → content hash
+    new_state: dict[str, str] = {}
+    for pid, pdata in pages.items():
+        body = pdata.get("body", "")
+        content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+        new_state[pid] = content_hash
+
+    changes: list[dict] = []
+
+    # Detect added and modified pages
+    for pid, new_hash in new_state.items():
+        pdata = pages[pid]
+        title = pdata.get("title", pid)
+        url = pdata.get("url", "#")
+        cat = pdata.get("category", "")
+
+        if pid not in old_state:
+            changes.append({
+                "title": title, "url": url, "action": "added",
+                "type": cat, "time_ago": "this build",
+            })
+        elif old_state[pid] != new_hash:
+            changes.append({
+                "title": title, "url": url, "action": "modified",
+                "type": cat, "time_ago": "this build",
+            })
+
+    # Detect removed pages
+    for pid in old_state:
+        if pid not in new_state:
+            changes.append({
+                "title": pid, "url": "#", "action": "removed",
+                "type": "", "time_ago": "this build",
+            })
+
+    # Sort: added first, then modified, then removed — limit to 20
+    action_order = {"added": 0, "modified": 1, "removed": 2}
+    changes.sort(key=lambda c: action_order.get(c["action"], 9))
+    changes = changes[:20]
+
+    # Save new state
+    state_path.write_text(json.dumps(new_state), encoding="utf-8")
+
+    return changes
 
 
 def _page_url(page_id: str) -> str:
@@ -344,6 +418,7 @@ def _generate_subcategory_indexes(
     content_type_groups: dict,
     graph: dict,
     theme_kwargs: dict,
+    total_pages: int = 0,
 ) -> None:
     """Generate index.html for subcategory parent paths that lack one.
 
@@ -381,6 +456,8 @@ def _generate_subcategory_indexes(
         idx_html = render_category_index(
             prefix, merged_pages,
             clusters=graph.get("clusters", []),
+            total_pages=total_pages,
+            content_type_groups=content_type_groups,
             **theme_kwargs,
         )
         (prefix_path / "index.html").write_text(idx_html, encoding="utf-8")
@@ -480,5 +557,11 @@ def _build_content_type_groups(pages: dict, categories: dict) -> dict:
         g["subcategories"] = dict(sorted(
             g["subcategories"].items(), key=lambda x: x[1]["count"], reverse=True
         ))
+        # Generate dynamic description from top subcategories
+        top_subs = list(g["subcategories"].keys())[:3]
+        if top_subs:
+            formatted = [s.replace("/", " › ").title() for s in top_subs]
+            suffix = f" + {len(g['subcategories']) - 3} more" if len(g["subcategories"]) > 3 else ""
+            g["desc"] = ", ".join(formatted) + suffix
 
     return sorted_groups
