@@ -8,12 +8,12 @@ Adapters are the ingestion layer that converts source files into standardized `W
 
 | Adapter | Name | File Extensions | Description |
 |---------|------|-----------------|-------------|
-| Source Code | `source-code` | 30+ extensions (see below) | Extracts structure, docs, imports, classes, methods |
+| Source Code | `source-code` | 30+ extensions (see below) | Extracts structure, docs, imports, classes, methods/functions, and `method:*` tags |
 | XML | `xml` | `.xml`, `.xsl`, `.xslt`, `.xsd`, `.wsdl` | Parses XML structure, extracts inline scripts |
 | PDF | `pdf` | `.pdf` | Converts PDFs to markdown via `pymupdf` with font-based heading detection |
 | Markdown | `markdown` | `.md`, `.mdx`, `.rst` | Pass-through with frontmatter extraction |
 | Config | `config` | `.json`, `.yaml`, `.yml`, `.toml`, `.properties`, `.ini`, `.env`, `.cfg` | Documents configuration files |
-| Generic | `generic` | *(any text file)* | Fallback — wraps text files in code blocks |
+| Generic | `generic` | *(any text file)* | Registered text adapter that wraps files in code blocks; not auto-discovered during normal ingest |
 
 ---
 
@@ -69,6 +69,8 @@ The source-code adapter applies specialized parsing for certain languages:
 - Extracts leading comments (line comments `//`, `#`, `--` and block comments `/* */`)
 - Categorizes by parent directory structure
 
+For Java, Python, JavaScript, TypeScript, Go, Rust, C#, Ruby, Kotlin, Swift, Scala, PHP, Bash, Lua, Perl, Elixir, Haskell, Dart, and Groovy, the adapter also extracts method/function names and adds up to 20 `method:<name>` tags per page.
+
 All extracted pages include a collapsible `<details>` block with the full source code.
 
 ---
@@ -101,7 +103,7 @@ PDF conversion uses `pymupdf` (the PyMuPDF library, ≥1.24.0) with custom struc
 
 ## Adapter Processing Order
 
-During ingestion, LLMWiki runs all registered adapters. Each adapter's `discover()` method finds matching files, and `extract()` processes them:
+During ingestion, LLMWiki runs the registered adapters whose `discover()` methods return files. Each matching file is then passed to `extract()`:
 
 ```
 For each source in config.sources:
@@ -114,7 +116,7 @@ For each source in config.sources:
             write pages to raw/{category}/{slug}.md
 ```
 
-The generic adapter has no predefined extensions and acts as a fallback — it handles any text file not claimed by other adapters.
+The generic adapter has no predefined extensions and returns no files from `discover()`, so it is not auto-discovered during normal CLI ingestion.
 
 ---
 
@@ -173,8 +175,10 @@ _names = [
 
 ```bash
 llmwiki init --source /path/with/xyz/files
-llmwiki ingest --adapter xyz
+llmwiki ingest
 ```
+
+`llmwiki ingest --adapter ...` is accepted by the CLI parser, but adapter-scoped ingestion is not currently wired up in the standard command flow.
 
 ---
 

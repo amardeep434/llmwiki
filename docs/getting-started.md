@@ -110,13 +110,6 @@ Output:
 
 This runs each adapter over the source files and writes markdown pages to `raw/`. Files are hashed — running `ingest` again will skip unchanged files.
 
-**Tip:** To run only one adapter:
-
-```bash
-llmwiki ingest --adapter source-code
-llmwiki ingest --adapter pdf
-```
-
 **Tip:** To force re-ingestion of all files (ignoring the state cache):
 
 ```bash
@@ -164,7 +157,7 @@ This creates:
 - `site/search-index.json` — client-side search index
 - `site/cross-references.json` — knowledge graph data
 
-**Tip:** Force a full rebuild (ignore incremental state):
+**Tip:** `--full` is accepted for compatibility, but current builds already regenerate `wiki/` and `site/` from `raw/`:
 
 ```bash
 llmwiki build --full
@@ -244,7 +237,7 @@ The `all` command runs the full pipeline in sequence:
 llmwiki all
 ```
 
-This executes: `ingest` → `build` (which includes graph, search index, and exports).
+This executes: `ingest` → `build` → `graph` → `export` → `lint`.
 
 ---
 

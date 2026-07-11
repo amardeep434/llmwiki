@@ -35,7 +35,7 @@ LLMWiki has been tested with codebases of several thousand source files. The mai
 - **SQLite FTS5**: handles millions of rows efficiently
 - **llms-full.txt**: capped at 5 MB to stay within LLM context limits
 
-For very large projects (10,000+ files), incremental builds ensure that only changed files are re-processed.
+For very large projects (10,000+ files), incremental ingestion ensures that only changed files are re-processed.
 
 ### Is ingestion incremental?
 
@@ -43,7 +43,7 @@ Yes. LLMWiki computes a SHA-256 hash of each source file. On subsequent runs of 
 
 ### How fast are builds?
 
-For a typical project (100–500 source files), the full pipeline (`llmwiki all`) completes in a few seconds. Incremental builds after minor changes take less than a second.
+For a typical project (100–500 source files), the full pipeline (`llmwiki all`) completes in a few seconds. Incremental ingestion after minor source changes keeps repeat runs fast.
 
 ---
 
@@ -108,7 +108,7 @@ This clears the state cache (`.llmwiki-state.json`) and re-processes all source 
 
 ### Can I edit pages in wiki/?
 
-Yes. The `wiki/` layer is designed for human curation. You can edit titles, add notes, reorganize, or merge pages. The `wiki/` directory is not overwritten by `llmwiki ingest` (which only writes to `raw/`).
+Treat `wiki/` as generated intermediate output. `llmwiki build` regenerates it from `raw/`, so manual edits there will be overwritten on the next build.
 
 ### What happens to deleted source files?
 
@@ -157,7 +157,7 @@ Each `label` becomes a separate category in the knowledge base.
 
 ### What if pymupdf is not installed?
 
-The PDF adapter degrades gracefully — it produces a placeholder page with the filename and a message to install the dependency. All other adapters continue to work normally.
+If `pymupdf` is unavailable, PDF ingestion errors are counted in the `llmwiki ingest` summary. Other adapters continue to run normally.
 
 Install with:
 
@@ -245,7 +245,7 @@ The core pages (dashboard, category indexes, page details) render as plain HTML.
 
 ### Can I use a custom domain?
 
-The generated site uses relative URLs, so it works at any path or domain without configuration changes.
+The generated site uses root-absolute paths (for example, `/categories/...`). Hosting at a domain root works, but subpath hosting requires path changes before deployment.
 
 ---
 

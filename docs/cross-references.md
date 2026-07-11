@@ -112,7 +112,7 @@ After resolving edges, LLMWiki computes importance scores using a simplified Pag
 
 | Parameter | Value | Configurable |
 |-----------|-------|-------------- |
-| Iterations | 20 | Yes (`cross_references.importance_iterations`) |
+| Iterations | 20 | No (currently hardcoded) |
 | Damping factor | 0.85 | No (standard value) |
 | Normalization | 0.0–1.0 | Automatic |
 
@@ -159,7 +159,7 @@ Clusters group related pages based on connectivity, independent of explicit cate
 
 1. **Project to undirected graph**: for every directed edge A→B, add undirected edges A↔B
 2. **BFS connected components**: standard breadth-first search to find connected components
-3. **Filter by size**: only components with ≥ `cluster_min_size` (default: 3) members become clusters
+3. **Filter by size**: only components with ≥3 members become clusters (currently hardcoded)
 4. **Label clusters**: the top 3 most common tags across cluster members form the label
 
 ### Output Format
@@ -198,6 +198,7 @@ The full graph is saved to `site/cross-references.json`:
       "id": "utility/DatabaseUtil",
       "title": "DatabaseUtil",
       "type": "utility",
+      "tags": ["java", "method:getConnection"],
       "in_degree": 12,
       "out_degree": 5,
       "importance": 1.0,
@@ -219,7 +220,7 @@ The full graph is saved to `site/cross-references.json`:
 
 ### SQLite Tables
 
-The `edges` and `clusters` tables in `llmwiki.db` mirror this data for SQL queries. See [AI Integration](ai-integration.md) for query examples.
+The SQLite schema includes `edges` and `clusters` tables, but the standard build currently writes graph data only to `site/cross-references.json`. See [AI Integration](ai-integration.md) for the SQL queries that match the populated database tables.
 
 ---
 
@@ -227,23 +228,25 @@ The `edges` and `clusters` tables in `llmwiki.db` mirror this data for SQL queri
 
 ### More accurate importance scores
 
-Increase the iteration count for large graphs:
+`cross_references.importance_iterations` is currently documented but not wired into the graph builder. PageRank runs for 20 iterations today.
+
+If you change the implementation, this is the shape of the config you would eventually expose:
 
 ```json
 { "cross_references": { "importance_iterations": 50 } }
 ```
 
-Scores typically converge within 20–30 iterations for graphs under 1,000 nodes.
+Scores typically converge within 20–30 iterations for graphs under 1,000 nodes, but the shipped build uses the hardcoded value above.
 
 ### Larger or smaller clusters
 
-Adjust the minimum cluster size:
+`cross_references.cluster_min_size` is also currently hardcoded to 3. If that setting is wired up later, the config would look like:
 
 ```json
 { "cross_references": { "cluster_min_size": 5 } }
 ```
 
-A higher value produces fewer, larger clusters. A value of `2` captures even small pairwise connections.
+A higher value would produce fewer, larger clusters. A value of `2` would capture even small pairwise connections.
 
 ### Disable cross-references
 

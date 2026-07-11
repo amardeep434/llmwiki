@@ -68,7 +68,7 @@ llmwiki ingest [--adapter NAME] [--force] [--config PATH]
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--adapter` | No | *(all adapters)* | Run only a specific adapter |
+| `--adapter` | No | *(all adapters)* | Accepted by the parser, but adapter-scoped ingestion is not currently wired up |
 | `--force` | No | `false` | Force re-ingest all files (ignore state cache) |
 | `--config` | No | `llmwiki.json` | Path to the configuration file |
 
@@ -77,12 +77,6 @@ llmwiki ingest [--adapter NAME] [--force] [--config PATH]
 ```bash
 # Run all adapters
 llmwiki ingest
-
-# Run only the source-code adapter
-llmwiki ingest --adapter source-code
-
-# Run only PDF ingestion
-llmwiki ingest --adapter pdf
 
 # Force re-ingest everything (ignores cached hashes)
 llmwiki ingest --force
@@ -153,17 +147,17 @@ llmwiki build [--full] [--theme THEME] [--config PATH]
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `--full` | No | `false` | Force a full rebuild (ignore incremental state) |
+| `--full` | No | `false` | Accepted for compatibility; `build` already regenerates `wiki/` and `site/` from `raw/` |
 | `--theme` | No | *(from config)* | Theme name (e.g., `emerald-dark`, `vodafone`) |
 | `--config` | No | `llmwiki.json` | Path to the configuration file |
 
 **Examples:**
 
 ```bash
-# Incremental build
+# Rebuild wiki/ and site/
 llmwiki build
 
-# Full rebuild
+# Accepted compatibility flag
 llmwiki build --full
 
 # Build with a specific theme
@@ -179,10 +173,12 @@ llmwiki build --theme vodafone
 ```
 
 **What it generates:**
+- Regenerated `wiki/` intermediate pages
 - `site/index.html` — dashboard
 - `site/categories/` — HTML + JSON pages organized by category
 - `site/search-index.json` — client-side search index
 - `site/cross-references.json` — knowledge graph
+- `build-history.json` at the project root and in `site/`
 - `site/style.css` and `site/script.js` — styling and interactive features
 
 ---
@@ -378,18 +374,6 @@ Usage: llmwiki build --theme <name>
 
 ---
 
-### `llmwiki diff`
-
-Show changes since the last build.
-
-```bash
-llmwiki diff
-```
-
-Reports files that have been added, modified, or deleted since the last ingestion.
-
----
-
 ### `llmwiki all`
 
 Run the full pipeline in sequence.
@@ -401,7 +385,7 @@ llmwiki all [--config PATH] [--full]
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--config` | No | `llmwiki.json` | Path to the configuration file |
-| `--full` | No | `false` | Force full rebuild |
+| `--full` | No | `false` | Accepted for compatibility; the current build step already regenerates output |
 
 **Equivalent to running:**
 

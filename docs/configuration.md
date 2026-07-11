@@ -65,7 +65,7 @@ Array of source directories to ingest. Each entry:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `path` | string | *(required)* | Absolute or relative path to the source directory |
-| `type` | string | `"auto"` | Adapter selection: `"auto"` runs all matching adapters, or specify one (e.g., `"source-code"`, `"xml"`) |
+| `type` | string | `"auto"` | Documented adapter selector, but per-source type filtering is not currently implemented in the ingest pipeline |
 | `exclude` | string[] | *(see defaults)* | Patterns to exclude from this source |
 
 **Exclusion patterns** support two formats:
@@ -97,7 +97,7 @@ Array of PDF files or directories to ingest:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `out_dir` | string | `"site"` | Output directory name for the generated site |
-| `incremental` | boolean | `true` | Enable incremental builds (skip unchanged files) |
+| `incremental` | boolean | `true` | Controls incremental ingestion state; current `build` always regenerates `wiki/` and `site/` from `raw/` |
 | `theme` | string | `"emerald-dark"` | UI theme name. Built-in: `emerald-dark`, `vodafone`. Run `llmwiki themes` to list all. |
 
 **Theme override via CLI:**
@@ -112,16 +112,16 @@ The `--theme` flag overrides the config value for that build.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `port` | integer | `8765` | HTTP server port |
-| `host` | string | `"127.0.0.1"` | Bind address (`"0.0.0.0"` for network access) |
+| `port` | integer | `8765` | Documented default, but `llmwiki serve` currently reads this only from the CLI flag |
+| `host` | string | `"127.0.0.1"` | Documented default, but `llmwiki serve` currently reads this only from the CLI flag (`"0.0.0.0"` for network access) |
 
 ### `cross_references`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | boolean | `true` | Enable cross-reference extraction and graph building |
-| `importance_iterations` | integer | `20` | Number of PageRank iterations |
-| `cluster_min_size` | integer | `3` | Minimum connected component size to form a cluster |
+| `importance_iterations` | integer | `20` | Documented setting, but PageRank iterations are currently hardcoded to 20 |
+| `cluster_min_size` | integer | `3` | Documented setting, but cluster detection currently uses a hardcoded minimum size of 3 |
 
 ### `exclude_global`
 
@@ -164,7 +164,7 @@ Global exclusion patterns applied to all sources in addition to per-source exclu
     { "path": "./services/api", "type": "auto", "exclude": [".venv", "__pycache__"] },
     { "path": "./libs/common", "type": "auto", "exclude": [".venv", "__pycache__"] }
   ],
-  "cross_references": { "enabled": true, "importance_iterations": 30 }
+  "cross_references": { "enabled": true, "importance_iterations": 20, "cluster_min_size": 3 }
 }
 ```
 

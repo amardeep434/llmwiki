@@ -139,7 +139,9 @@ layout:
 ### Navigation (Left Sidebar)
 - Background: `surface-0`
 - Width: 260px, collapsible with toggle button
-- Content: collapsible tree of categories
+- Content: collapsible tree of content types and categories
+- Tier-1 content types expand into tier-2 subcategories
+- Tier-2 subcategories can expand inline to preview top matching pages before navigation
 - Tree items: `body-sm`, indent with 16px per level
 - Active item: `accent-subtle` background, `accent` text
 - Hover: `surface-2` background
@@ -162,12 +164,14 @@ layout:
 - Padding: space-4
 - Hover: border → `hairline-strong`, subtle translateY(-1px)
 - No box-shadow (flat design)
+- Dashboard also includes a Recent Changes feed above the card grid with action dots, content-type badges, and compact timestamps
 
 ### Page Detail
 - Metadata bar: horizontal strip at top with type, language, tags, importance
 - Tags: pill-shaped, `surface-2` background, `caption` size
 - Content body: `body` typography, max-width 800px within content area
 - Headings: `heading-1` through `heading-4` with anchor links
+- Method lists: clickable entries that jump to highlighted anchors in the rendered code block
 - Code blocks: `surface-0` background, `hairline` border, `mono` font, copy button
 - Cross-references: compact list with → / ← arrows, colored by type
 - Backlinks: section at bottom, links grouped by category
@@ -186,6 +190,12 @@ layout:
 - Hover: `surface-2`
 - Borders: only horizontal `hairline` between rows
 - Cell padding: space-2 vertical, space-3 horizontal
+- Category/listing pages can replace card grids with inline searchable result tables while preserving badges, tags, and importance bars
+
+### Full Graph Page
+- Uses vis-network for both the default force-directed view and the alternate neural-network layout
+- Hover tooltips surface title, category/column, importance, and available tags
+- Double-click navigation from graph nodes should feel as direct as clicking a standard link
 
 ### Importance Bar
 - Thin (3px) horizontal bar

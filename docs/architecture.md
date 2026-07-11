@@ -9,14 +9,14 @@ LLMWiki transforms source code and documentation into a searchable knowledge bas
 ```
 Sources                raw/                  wiki/                 site/
 ┌──────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
-│ .java    │     │ Immutable    │     │ Curated      │     │ index.html       │
+│ .java    │     │ Immutable    │     │ Generated    │     │ index.html       │
 │ .py      │────►│ markdown     │────►│ markdown     │────►│ categories/      │
-│ .xml     │     │ with YAML    │     │ (editable)   │     │ search-index.json│
+│ .xml     │     │ with YAML    │     │ (intermediate) │     │ search-index.json│
 │ .pdf     │     │ frontmatter  │     │              │     │ llmwiki.db       │
 │ .md      │     │              │     │              │     │ llms.txt         │
 │ .json    │     │              │     │              │     │ graph.jsonld     │
 └──────────┘     └──────────────┘     └──────────────┘     └──────────────────┘
-                   (never edit)        (human edits OK)      (regenerated)
+                   (never edit)        (generated)           (regenerated)
 ```
 
 ### Layer Details
@@ -24,8 +24,8 @@ Sources                raw/                  wiki/                 site/
 | Layer | Directory | Contents | Lifecycle |
 |-------|-----------|----------|-----------|
 | **Raw** | `raw/` | Adapter-generated markdown with YAML frontmatter. One `.md` file per source file. | Regenerated on every `ingest`. Never hand-edit. |
-| **Wiki** | `wiki/` | Curated copies of raw pages. Users can edit titles, add notes, merge pages. | Persistent. Survives re-ingestion. |
-| **Site** | `site/` | Static HTML, CSS, JS, search indexes, AI exports. | Fully regenerated on every `build`. |
+| **Wiki** | `wiki/` | Generated intermediate markdown enriched with importance, tags, and cluster data. | Regenerated on every `build`. Do not hand-edit. |
+| **Site** | `site/` | Static HTML, CSS, JS, search indexes, graph data, and exported artifacts. | Rebuilt by `build`, then supplemented by `export`. |
 
 ### Page Format
 
@@ -64,18 +64,19 @@ Class documentation extracted from Javadoc.
 ## Pipeline Flow
 
 ```
-llmwiki init          llmwiki ingest         llmwiki build
-     │                     │                      │
-     ▼                     ▼                      ▼
-  Scan source         Run adapters           Load raw/ pages
-  Detect adapters     Hash each file         Build knowledge graph
-  Create dirs         Skip unchanged           ├─ Extract edges
-  Write config        Extract WikiPages        ├─ Compute PageRank
-                      Write raw/*.md           ├─ Detect clusters
-                      Update state file      Render HTML
+llmwiki init          llmwiki ingest         llmwiki build         llmwiki export
+     │                     │                      │                      │
+     ▼                     ▼                      ▼                      ▼
+  Scan source         Run adapters           Load raw/ pages        Generate AI exports
+  Detect adapters     Hash each file         Build knowledge graph    ├─ llms.txt
+  Create dirs         Skip unchanged           ├─ Extract edges        ├─ llms-full.txt
+  Write config        Extract WikiPages        ├─ Compute PageRank     ├─ graph.jsonld
+                      Write raw/*.md           ├─ Detect clusters      └─ sitemap.xml
+                      Update state file      Regenerate wiki/
+                                             Render HTML
                                              Build search index
                                              Write CSS/JS
-                                             Generate AI exports
+                                             Write build-history.json
 ```
 
 ### Step 1: Init (`llmwiki init --source PATH`)
@@ -91,7 +92,7 @@ llmwiki init          llmwiki ingest         llmwiki build
 2. For each configured source, runs matching adapters
 3. Each adapter produces `WikiPage` objects (slug, title, category, body, references)
 4. Pages are written as markdown files to `raw/{category}/{slug}.md`
-5. Content hashing (SHA-256) enables incremental builds — unchanged files are skipped
+5. Content hashing (SHA-256) enables incremental ingestion — unchanged files are skipped
 6. Build state is tracked in `.llmwiki-state.json`
 
 ### Step 3: Build (`llmwiki build`)
@@ -100,18 +101,34 @@ llmwiki init          llmwiki ingest         llmwiki build
 2. Builds the knowledge graph:
    - Extracts cross-references from frontmatter and body text
    - Resolves fuzzy references (partial slug matching)
-   - Computes PageRank importance scores (20 iterations, 0.85 damping)
-   - Detects topic clusters via connected components (BFS)
-3. Renders HTML:
-   - Dashboard (`index.html`) with stats, categories, top pages
+   - Computes PageRank importance scores (hardcoded to 20 iterations, 0.85 damping)
+   - Detects topic clusters via connected components (BFS, hardcoded minimum size 3)
+3. Regenerates `wiki/` as enriched intermediate markdown
+4. Renders HTML:
+   - Dashboard (`index.html`) with stats, categories, top pages, and recent changes
    - Category index pages (`categories/{cat}/index.html`)
    - Individual page detail pages with backlinks and mini graph panel
    - Per-page JSON files for AI agents
-4. Generates search infrastructure:
+5. Generates search infrastructure:
    - `search-index.json` for client-side Cmd+K search
    - `llmwiki.db` SQLite FTS5 database
-5. Writes `style.css` and `script.js` (theme system, search palette, mini graph)
-6. Applies the configured theme (CSS custom properties via `build.theme` or `--theme` flag)
+6. Writes `style.css` and `script.js` (theme system, search palette, mini graph)
+7. Applies the configured theme (CSS custom properties via `build.theme` or `--theme` flag)
+8. Writes `build-history.json` at the project root and copies it into `site/`
+
+### Step 4: Export (`llmwiki export`)
+
+1. Loads the current page set from `raw/`
+2. Generates AI export artifacts:
+   - `llms.txt`
+   - `llms-full.txt`
+   - `graph.jsonld`
+   - `sitemap.xml`
+
+### Step 5: Serve (`llmwiki serve`)
+
+1. Serves the generated `site/` directory over HTTP
+2. Uses CLI `--host` / `--port` values rather than `llmwiki.json`
 
 ---
 
@@ -204,7 +221,7 @@ Fuzzy matching resolves references to actual page IDs:
 ### Importance Scoring (`importance.py`)
 
 PageRank with simplified parameters:
-- **Iterations**: 20 (configurable via `cross_references.importance_iterations`)
+- **Iterations**: 20 (currently hardcoded; `cross_references.importance_iterations` is not wired yet)
 - **Damping factor**: 0.85 (standard)
 - **Output**: scores normalized to 0.0–1.0
 
@@ -213,7 +230,7 @@ PageRank with simplified parameters:
 Connected component analysis via BFS:
 1. Build undirected adjacency from directed edges
 2. BFS to find connected components
-3. Filter components below `cluster_min_size` (default: 3)
+3. Filter components below 3 members (currently hardcoded; `cluster_min_size` is not wired yet)
 4. Label clusters by most common tags
 
 ---
@@ -232,7 +249,7 @@ LLMWiki provides two independent search systems:
 ### SQLite FTS5 (for AI agents)
 
 - **Database**: `llmwiki.db` in the site directory
-- **Tables**: `pages` (full metadata), `pages_fts` (FTS5 virtual table), `edges`, `clusters`, `build_history`
+- **Tables**: `pages` (populated metadata), `pages_fts` (FTS5 virtual table), plus schema placeholders for `edges`, `clusters`, and `build_history`
 - **FTS5 columns**: title, body_plain, tags, category
 - **Sync**: triggers keep FTS index in sync with the pages table automatically
 - **Query**: standard FTS5 `MATCH` syntax with `snippet()` support
@@ -362,14 +379,16 @@ my-project/
 │   │   └── Utils.md
 │   └── docs/
 │       └── readme.md
-├── wiki/                 # Curated pages (editable)
+├── wiki/                 # Generated intermediate pages
 │   └── ...
+├── build-history.json    # Build log at project root
 └── site/                 # Generated output
     ├── index.html        # Dashboard
     ├── style.css
     ├── script.js
     ├── search-index.json # Client-side search
     ├── cross-references.json
+    ├── build-history.json
     ├── llmwiki.db        # SQLite FTS5
     ├── llms.txt          # AI: page index
     ├── llms-full.txt     # AI: full text dump

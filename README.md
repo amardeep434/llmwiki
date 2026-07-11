@@ -41,7 +41,7 @@ llmwiki init --source C:\path\to\your\project
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │   Sources    │    │    raw/      │    │    wiki/     │
-│              │    │  (immutable  │    │  (curated    │
+│              │    │  (immutable  │    │  (generated  │
 │  Code, PDFs, ├───►│   extracted  ├───►│   markdown)  │
 │  XML, Docs   │    │   markdown)  │    │              │
 └──────────────┘    └──────────────┘    └──────┬───────┘
@@ -62,7 +62,7 @@ llmwiki init --source C:\path\to\your\project
 | Layer | Path    | Purpose                              | Mutable? |
 |-------|---------|--------------------------------------|----------|
 | Raw   | `raw/`  | Adapter output, never hand-edited    | No       |
-| Wiki  | `wiki/` | Curated pages, editable by humans    | Yes      |
+| Wiki  | `wiki/` | Generated intermediate markdown      | No       |
 | Site  | `site/` | Generated HTML, search index, exports| No       |
 
 ---
@@ -84,7 +84,6 @@ llmwiki init --source C:\path\to\your\project
 | `llmwiki lint`     | Check for broken links and orphaned pages        |
 | `llmwiki stats`    | Print inventory statistics                       |
 | `llmwiki themes`   | List available UI themes                         |
-| `llmwiki diff`     | Show changes since last build                    |
 | `llmwiki all`      | Full pipeline: ingest → build → graph → export → lint |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
@@ -93,18 +92,24 @@ See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 
 ## Feature Highlights
 
-- **6 built-in adapters**: source-code (30+ languages), XML, PDF, Markdown, config files, generic text
+- **6 built-in adapters**: source-code (30+ languages), XML, PDF, Markdown, config files, generic text (registered but not auto-discovered)
+- **Method/function extraction**: Java, Python, and 16+ additional languages emit method/function lists plus `method:*` tags
 - **PDF conversion**: pymupdf with font-based heading detection, table extraction, image extraction, header/footer stripping
 - **Knowledge graph**: PageRank importance scoring, title-based cross-references, cluster detection
 - **Cross-references**: wiki links, Java imports, class references, and title-mention matching
 - **Mini graph panel**: canvas-based force-directed graph on every detail page (2-hop neighborhood)
+- **Full graph explorer**: vis-network force-directed + neural-network views with hover tooltips that include page tags
 - **Three-panel UI**: sidebar + content + graph panel with responsive collapsing
+- **Sidebar navigation**: expandable tier-2 content-type tree with inline page previews
 - **Theme system**: swappable themes via CSS variables (built-in: `emerald-dark`, `vodafone`)
 - **Dual search**: client-side Cmd+K palette (JSON index) + SQLite FTS5 (for AI agents)
+- **Inline category search**: listing pages can swap card grids for searchable result tables
+- **Clickable method anchors**: method lists jump directly to highlighted declarations in code blocks
 - **AI exports**: `llms.txt`, `llms-full.txt`, `graph.jsonld`, `sitemap.xml`, per-page `.json`
-- **Dashboard**: stats overview, category cards, most-connected pages
-- **Incremental builds**: SHA-256 content hashing, only re-processes changed files
+- **Dashboard**: stats overview, recent changes feed, category cards, most-connected pages
+- **Incremental ingestion**: SHA-256 content hashing, only re-processes changed files
 - **Clean & force workflow**: `llmwiki clean` resets state, `--force` re-ingests everything
+- **Build history**: root + site `build-history.json` log each build summary
 - **Cross-platform**: works on Windows, macOS, and Linux
 - **Minimal dependencies**: just `markdown` + `pymupdf` (everything else is stdlib)
 

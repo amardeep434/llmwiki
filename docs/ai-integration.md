@@ -15,6 +15,7 @@ LLMWiki generates several file formats specifically designed for consumption by 
 | `llmwiki.db` | SQLite | Variable | Full-text search database with FTS5 |
 | `search-index.json` | JSON | Medium | Client-side search index |
 | `cross-references.json` | JSON | Medium | Full knowledge graph (nodes, edges, clusters) |
+| `build-history.json` | JSON | Small | Build log copied into `site/` for the changelog view |
 | `*.json` | JSON | Small | Per-page metadata alongside each `.html` file |
 
 ---
@@ -45,7 +46,7 @@ Follows the [llmstxt.org](https://llmstxt.org) specification — a simple text i
 
 ## llms-full.txt
 
-A flattened text dump of all page content, capped at 5 MB:
+A flattened text dump of page content. Each page body is truncated to 2,000 characters, and the final file stops at 5 MB:
 
 ```
 ============================================================
@@ -137,6 +138,8 @@ The `llmwiki.db` file is a SQLite database with full-text search capabilities. I
 
 **`pages_fts`** — FTS5 virtual table (title, body_plain, tags, category)
 
+In the standard build flow, the populated `pages` columns are `id`, `title`, `category`, `body_plain`, `tags`, and `importance_score`. The remaining columns are schema placeholders for future enrichments.
+
 **`edges`** — cross-reference edges:
 
 | Column | Type | Description |
@@ -144,6 +147,8 @@ The `llmwiki.db` file is a SQLite database with full-text search capabilities. I
 | `from_id` | TEXT | Source page ID |
 | `to_id` | TEXT | Target page ID |
 | `edge_type` | TEXT | Reference type (e.g., `"references"`) |
+
+This table is created in the SQLite schema, but the standard build currently writes graph relationships to `site/cross-references.json` instead of populating `edges`.
 
 **`clusters`** — detected topic clusters:
 
@@ -154,6 +159,8 @@ The `llmwiki.db` file is a SQLite database with full-text search capabilities. I
 | `member_count` | INTEGER | Number of pages |
 | `top_tags` | TEXT | Most common tags |
 
+This table is also created but not populated by the standard build; cluster data currently lives in `site/cross-references.json`.
+
 **`build_history`** — build audit trail:
 
 | Column | Type | Description |
@@ -162,6 +169,8 @@ The `llmwiki.db` file is a SQLite database with full-text search capabilities. I
 | `timestamp` | TEXT | ISO 8601 timestamp |
 | `type` | TEXT | Build type (incremental/full) |
 | `duration_seconds` | REAL | Build duration |
+
+The SQLite table exists, but the current build writes history to `build-history.json` rather than inserting rows here.
 
 ---
 
@@ -197,27 +206,17 @@ WHERE category = 'utility'
 ORDER BY importance_score DESC;
 ```
 
-### 4. Find all pages referencing a specific page
+### 4. Find pages with extracted methods/functions
 
 ```sql
-SELECT e.from_id, p.title
-FROM edges e
-JOIN pages p ON e.from_id = p.id
-WHERE e.to_id = 'utility/DatabaseUtil';
+SELECT id, title, category, tags
+FROM pages
+WHERE tags LIKE '%method:%'
+ORDER BY importance_score DESC
+LIMIT 20;
 ```
 
-### 5. Find pages with no cross-references (orphans)
-
-```sql
-SELECT p.id, p.title, p.category
-FROM pages p
-LEFT JOIN edges e_out ON p.id = e_out.from_id
-LEFT JOIN edges e_in ON p.id = e_in.to_id
-WHERE e_out.from_id IS NULL
-  AND e_in.to_id IS NULL;
-```
-
-### 6. Count pages per category
+### 5. Count pages per category
 
 ```sql
 SELECT category, COUNT(*) AS page_count
@@ -226,31 +225,41 @@ GROUP BY category
 ORDER BY page_count DESC;
 ```
 
-### 7. Find pages by tag
+### 6. Find pages by tag
 
 ```sql
 SELECT id, title, category
 FROM pages
-WHERE tags LIKE '%java%'
+WHERE tags LIKE '%"java"%'
 ORDER BY importance_score DESC;
 ```
 
-### 8. Get cluster members
+### 7. Search page bodies without FTS operators
 
 ```sql
-SELECT p.id, p.title, p.cluster_id, p.importance_score
-FROM pages p
-WHERE p.cluster_id = 'cluster-1'
-ORDER BY p.importance_score DESC;
+SELECT id, title, category
+FROM pages
+WHERE lower(body_plain) LIKE '%authentication%'
+ORDER BY importance_score DESC;
 ```
 
-### 9. Find bidirectional references
+### 8. Find the longest extracted pages
 
 ```sql
-SELECT e1.from_id, e1.to_id
-FROM edges e1
-JOIN edges e2 ON e1.from_id = e2.to_id AND e1.to_id = e2.from_id
-WHERE e1.from_id < e1.to_id;
+SELECT id, title, category, length(body_plain) AS chars
+FROM pages
+ORDER BY chars DESC
+LIMIT 20;
+```
+
+### 9. Top pages within a category
+
+```sql
+SELECT id, title, importance_score
+FROM pages
+WHERE category = 'utility'
+ORDER BY importance_score DESC
+LIMIT 10;
 ```
 
 ### 10. Search within a specific category
@@ -266,34 +275,24 @@ ORDER BY rank
 LIMIT 10;
 ```
 
-### 11. Get the reference graph for a page (2 hops)
+### 11. Find pages missing extracted tags
 
 ```sql
--- Direct references
-SELECT 1 AS depth, e.to_id AS page, p.title
-FROM edges e
-JOIN pages p ON e.to_id = p.id
-WHERE e.from_id = 'utility/DatabaseUtil'
-
-UNION
-
--- 2nd-hop references
-SELECT 2, e2.to_id, p2.title
-FROM edges e1
-JOIN edges e2 ON e1.to_id = e2.from_id
-JOIN pages p2 ON e2.to_id = p2.id
-WHERE e1.from_id = 'utility/DatabaseUtil'
-  AND e2.to_id != 'utility/DatabaseUtil';
+SELECT id, title, category
+FROM pages
+WHERE tags IS NULL OR tags = '[]'
+ORDER BY title;
 ```
 
 ### 12. Summary statistics
 
 ```sql
 SELECT
-    (SELECT COUNT(*) FROM pages) AS total_pages,
-    (SELECT COUNT(*) FROM edges) AS total_edges,
-    (SELECT COUNT(*) FROM clusters) AS total_clusters,
-    (SELECT COUNT(DISTINCT category) FROM pages) AS total_categories;
+    COUNT(*) AS total_pages,
+    COUNT(DISTINCT category) AS total_categories,
+    SUM(CASE WHEN tags LIKE '%method:%' THEN 1 ELSE 0 END) AS pages_with_method_tags,
+    ROUND(AVG(importance_score), 4) AS avg_importance
+FROM pages;
 ```
 
 ---
@@ -304,18 +303,18 @@ SELECT
 
 1. Agent receives a user question
 2. Query `pages_fts` with extracted keywords
-3. Retrieve top-N page bodies from `pages.body_md`
+3. Retrieve top-N page bodies from `pages.body_plain`
 4. Feed as context to the LLM
 
 ### Code Navigation Agent
 
 1. User asks "how does X work?"
 2. Search `pages_fts` for X
-3. Follow `edges` to find related pages
+3. Follow related entries in per-page `.json` files or `cross-references.json`
 4. Use `importance_score` to prioritize which pages to include in context
 
 ### Documentation Audit
 
-1. Query orphan pages (no edges in or out)
-2. Find pages with low `importance_score`
-3. Report undocumented areas of the codebase
+1. Query for pages with low `importance_score`
+2. Find pages missing extracted tags or very short `body_plain` content
+3. Cross-check with `cross-references.json` if you need graph-level orphan analysis
