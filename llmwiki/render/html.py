@@ -398,7 +398,7 @@ def render_sidebar(categories: dict, current_category: str = "",
                     f'<summary class="sidebar__item sidebar__ct-tier1">'
                     f'<span class="sidebar__item-icon">{icon}</span>'
                     f'<span>{escape(ct_name)}</span>'
-                    f'<span class="sidebar__item-count">{count:,}</span>'
+                    f'<span class="sidebar__item-count">{count}</span>'
                     f'</summary>\n'
                 )
                 # Tier 2 sub-categories — show top 8, hide <3 items behind "show all"
@@ -448,7 +448,7 @@ def render_sidebar(categories: dict, current_category: str = "",
                     f'<div class="sidebar__item sidebar__ct-tier1">'
                     f'<span class="sidebar__item-icon">{icon}</span>'
                     f'<span>{escape(ct_name)}</span>'
-                    f'<span class="sidebar__item-count">{count:,}</span></div>\n'
+                    f'<span class="sidebar__item-count">{count}</span></div>\n'
                 )
         parts.append('</div>\n')
     else:
@@ -711,7 +711,7 @@ def render_dashboard(
                 f'<div class="card__header">'
                 f'<span class="card__icon-emoji">{icon}</span>'
                 f'<span class="card__title">{escape(ct_name)}</span>'
-                f'<span class="card__count">{count:,}</span>'
+                f'<span class="card__count">{count}</span>'
                 f'</div>{desc_html}{subcat_html}</a>\n'
             )
         parts.append('</div>\n</div>\n')
