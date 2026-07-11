@@ -17,7 +17,7 @@ The source-code adapter handles 30+ languages including Java, Python, JavaScript
 ### What are the system requirements?
 
 - Python 3.9 or later
-- 2 pip dependencies: `markdown` and `pymupdf4llm`
+- 2 pip dependencies: `markdown` and `pymupdf>=1.24.0`
 - No database server (SQLite is built into Python)
 - Works on Windows, macOS, and Linux
 
@@ -78,13 +78,33 @@ Three levels of exclusion:
 
 ### How do I reset the project?
 
-Delete the generated directories and state file:
+Use the `clean` command:
+
+```bash
+# Clean everything and start fresh
+llmwiki clean --all
+```
+
+Or manually:
 
 ```bash
 rm -rf raw/ wiki/ site/ .llmwiki-state.json
 ```
 
 Then re-run `llmwiki ingest && llmwiki build`.
+
+### How do I force re-ingest all files?
+
+Use the `--force` flag:
+
+```bash
+llmwiki ingest --force
+```
+
+This clears the state cache (`.llmwiki-state.json`) and re-processes all source files regardless of whether they've changed. Useful when:
+- You've updated adapter logic and want to regenerate all output
+- The state file has become stale or corrupted
+- You want to verify that all pages are up to date
 
 ### Can I edit pages in wiki/?
 
@@ -94,9 +114,13 @@ Yes. The `wiki/` layer is designed for human curation. You can edit titles, add 
 
 Currently, LLMWiki does not automatically remove pages from `raw/` when source files are deleted. To clean up:
 
-1. Delete the `raw/` directory
-2. Re-run `llmwiki ingest`
-3. Re-run `llmwiki build`
+```bash
+llmwiki clean --raw
+llmwiki ingest
+llmwiki build
+```
+
+Or equivalently: `llmwiki clean --all && llmwiki all`
 
 ---
 
@@ -104,13 +128,14 @@ Currently, LLMWiki does not automatically remove pages from `raw/` when source f
 
 ### How good is PDF conversion?
 
-LLMWiki uses `pymupdf4llm` for PDF-to-markdown conversion, which provides high-quality output including:
+LLMWiki uses `pymupdf` (PyMuPDF ≥1.24.0) with custom structured extraction that provides high-quality output:
 
-- Headings and hierarchy
-- Lists (ordered and unordered)
-- Tables
-- Bold, italic, and code formatting
-- Page boundaries
+- **Font-based heading detection** — analyzes font sizes to determine heading hierarchy (H1–H4)
+- **Table extraction** — uses `find_tables()` for proper markdown table formatting
+- **Sub-bullet glyph handling** — detects Wingdings and Unicode bullet markers for nested lists
+- **Image extraction** — pulls embedded images to `assets/` directory
+- **Header/footer stripping** — removes recurring text at page margins
+- **Code block detection** — identifies monospace spans and wraps in code formatting
 
 Complex layouts (multi-column, heavy diagrams, scanned documents) may produce less accurate results. For best results, use text-based PDFs rather than scanned images.
 
@@ -130,9 +155,15 @@ Yes. Add multiple entries to `pdf_sources`:
 
 Each `label` becomes a separate category in the knowledge base.
 
-### What if pymupdf4llm is not installed?
+### What if pymupdf is not installed?
 
 The PDF adapter degrades gracefully — it produces a placeholder page with the filename and a message to install the dependency. All other adapters continue to work normally.
+
+Install with:
+
+```bash
+pip install "pymupdf>=1.24.0"
+```
 
 ---
 
@@ -215,6 +246,45 @@ The core pages (dashboard, category indexes, page details) render as plain HTML.
 ### Can I use a custom domain?
 
 The generated site uses relative URLs, so it works at any path or domain without configuration changes.
+
+---
+
+## Themes
+
+### How do I switch themes?
+
+Two options:
+
+**In config** — set `"theme"` in the `"build"` section of `llmwiki.json`:
+
+```json
+{
+  "build": { "theme": "vodafone" }
+}
+```
+
+**Via CLI** — pass `--theme` to the build command (overrides config):
+
+```bash
+llmwiki build --theme vodafone
+```
+
+### What themes are available?
+
+Run `llmwiki themes` to list all available themes. Built-in themes:
+
+| Name | Description |
+|------|-------------|
+| `emerald-dark` | Dark-first with emerald accent (default) |
+| `vodafone` | Bold Vodafone Red on dark surfaces |
+
+### Can I create a custom theme?
+
+Yes. Create a `.py` file in `llmwiki/render/themes/` that defines and registers a `Theme` dataclass with CSS custom properties (colors, typography). See [Architecture](architecture.md#theme-system) for details.
+
+### Does the theme affect light mode?
+
+Yes. Each theme defines both dark and light mode color palettes. The user's browser toggle switches between them regardless of which theme is active.
 
 ---
 

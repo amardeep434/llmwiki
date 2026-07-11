@@ -37,19 +37,33 @@ These are direct cross-references detected by the adapter (e.g., Java `import` s
 
 ### Source 2: Body Text Parsing
 
-The `crossref.py` module scans page bodies with three regex patterns:
+The `crossref.py` module scans page bodies with five regex patterns:
 
 | Pattern | Regex | Example Match |
 |---------|-------|---------------|
 | Wiki links | `\[\[([^\]\|]+)(?:\|[^\]]+)?\]\]` | `[[DatabaseUtil]]` or `[[DatabaseUtil\|DB Utils]]` |
-| Java imports | `^import\s+([\w.]+);` | `import com.example.Util;` |
+| Java imports | `import\s+([\w.]+);` | `import com.example.Util;` |
 | Class references | `(?:new\s+\|extends\s+\|implements\s+)([\w.]+)` | `extends BaseAdapter` |
+| SailPoint API | `\b(sailpoint\.\w+\.\w+)\b` | `sailpoint.api.SailPointContext` |
+| Connector names | `\b(Active Directory\|LDAP\|...\|SOAP)\b` | `Active Directory` |
 
 **Filtering:** Java standard library references are automatically excluded:
 - `java.*`
 - `javax.*`
 - `org.w3c.*`
 - `org.xml.*`
+
+### Source 3: Title-Mention Matching
+
+The `graph.py` module performs a second pass over all pages, scanning each page body for substring mentions of other pages' titles. This produces `"mentions"` type edges.
+
+**Algorithm:**
+1. Build a `title → page_id` index (only titles ≥6 chars, excluding generic words like "source", "config", "method", etc.)
+2. For each page, scan its body (lowercased) for all known titles
+3. If a title appears as a substring, add a `(page_id, target_id, "mentions")` edge
+4. Cap at 20 mention-edges per page to prevent hub explosion
+
+**Impact:** Title-mention matching significantly increases graph connectivity. On a typical project, this adds thousands of edges beyond what pattern-based extraction finds alone.
 
 ### Edge List Construction
 

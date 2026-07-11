@@ -10,7 +10,7 @@ Adapters are the ingestion layer that converts source files into standardized `W
 |---------|------|-----------------|-------------|
 | Source Code | `source-code` | 30+ extensions (see below) | Extracts structure, docs, imports, classes, methods |
 | XML | `xml` | `.xml`, `.xsl`, `.xslt`, `.xsd`, `.wsdl` | Parses XML structure, extracts inline scripts |
-| PDF | `pdf` | `.pdf` | Converts PDFs to markdown via `pymupdf4llm` |
+| PDF | `pdf` | `.pdf` | Converts PDFs to markdown via `pymupdf` with font-based heading detection |
 | Markdown | `markdown` | `.md`, `.mdx`, `.rst` | Pass-through with frontmatter extraction |
 | Config | `config` | `.json`, `.yaml`, `.yml`, `.toml`, `.properties`, `.ini`, `.env`, `.cfg` | Documents configuration files |
 | Generic | `generic` | *(any text file)* | Fallback — wraps text files in code blocks |
@@ -85,11 +85,16 @@ The XML adapter provides specialized handling for:
 
 ## PDF Adapter Details
 
-PDF conversion uses `pymupdf4llm` to produce high-quality markdown:
+PDF conversion uses `pymupdf` (the PyMuPDF library, ≥1.24.0) with custom structured extraction:
 
-- Preserves headings, lists, tables, and formatting
-- Handles multi-page documents (each PDF → one wiki page)
-- Falls back gracefully if `pymupdf4llm` is not installed
+- **Font-based heading detection**: analyzes font sizes across the document to determine heading hierarchy (H1–H4) based on relative size ranking
+- **Table extraction**: uses `page.find_tables()` to detect and convert tables into proper markdown table syntax
+- **Sub-bullet glyph handling**: detects Wingdings bullet characters and Unicode glyph markers for nested list items
+- **Image extraction**: extracts embedded images to an `assets/` directory alongside the markdown output
+- **Header/footer stripping**: identifies recurring text at consistent top/bottom positions across pages and removes it
+- **Copyright page detection**: heuristically identifies and skips copyright/disclaimer pages
+- **Code block detection**: identifies monospace font spans and wraps them in code formatting
+- Each PDF produces one wiki page
 - Configure via `pdf_sources` in `llmwiki.json`
 
 ---

@@ -73,15 +73,19 @@ llmwiki init --source C:\path\to\your\project
 |--------------------|--------------------------------------------------|
 | `llmwiki init`     | Initialize project — scan source, create config  |
 | `llmwiki ingest`   | Run adapters to populate `raw/`                  |
+| `llmwiki ingest --force` | Force re-ingest all files (ignore state cache) |
+| `llmwiki clean`    | Clean generated data and reset state             |
 | `llmwiki build`    | Build `wiki/` and `site/` from `raw/`            |
+| `llmwiki build --theme <name>` | Build with a specific UI theme        |
 | `llmwiki serve`    | Start local HTTP server (default port 8765)      |
 | `llmwiki search`   | Full-text search via SQLite FTS5                 |
 | `llmwiki graph`    | Rebuild the knowledge graph                      |
 | `llmwiki export`   | Generate AI-consumable exports                   |
 | `llmwiki lint`     | Check for broken links and orphaned pages        |
 | `llmwiki stats`    | Print inventory statistics                       |
+| `llmwiki themes`   | List available UI themes                         |
 | `llmwiki diff`     | Show changes since last build                    |
-| `llmwiki all`      | Full pipeline: ingest → build → graph → export   |
+| `llmwiki all`      | Full pipeline: ingest → build → graph → export → lint |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 
@@ -90,13 +94,19 @@ See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 ## Feature Highlights
 
 - **6 built-in adapters**: source-code (30+ languages), XML, PDF, Markdown, config files, generic text
-- **Knowledge graph**: PageRank importance scoring, cluster detection via connected components
+- **PDF conversion**: pymupdf with font-based heading detection, table extraction, image extraction, header/footer stripping
+- **Knowledge graph**: PageRank importance scoring, title-based cross-references, cluster detection
+- **Cross-references**: wiki links, Java imports, class references, and title-mention matching
+- **Mini graph panel**: canvas-based force-directed graph on every detail page (2-hop neighborhood)
+- **Three-panel UI**: sidebar + content + graph panel with responsive collapsing
+- **Theme system**: swappable themes via CSS variables (built-in: `emerald-dark`, `vodafone`)
 - **Dual search**: client-side Cmd+K palette (JSON index) + SQLite FTS5 (for AI agents)
 - **AI exports**: `llms.txt`, `llms-full.txt`, `graph.jsonld`, `sitemap.xml`, per-page `.json`
 - **Dashboard**: stats overview, category cards, most-connected pages
 - **Incremental builds**: SHA-256 content hashing, only re-processes changed files
+- **Clean & force workflow**: `llmwiki clean` resets state, `--force` re-ingests everything
 - **Cross-platform**: works on Windows, macOS, and Linux
-- **Minimal dependencies**: just `markdown` + `pymupdf4llm` (everything else is stdlib)
+- **Minimal dependencies**: just `markdown` + `pymupdf` (everything else is stdlib)
 
 ---
 
@@ -111,7 +121,7 @@ LLMWiki stores its configuration in `llmwiki.json`, created by `llmwiki init`.
     { "path": "/path/to/source", "type": "auto", "exclude": ["node_modules", ".git"] }
   ],
   "pdf_sources": [],
-  "build": { "out_dir": "site", "incremental": true, "search_mode": "auto" },
+  "build": { "out_dir": "site", "incremental": true, "theme": "emerald-dark" },
   "serve": { "port": 8765, "host": "127.0.0.1" },
   "cross_references": { "enabled": true, "importance_iterations": 20, "cluster_min_size": 3 },
   "exclude_global": ["node_modules", ".git", "build", "dist", "__pycache__"]
@@ -159,7 +169,7 @@ See [docs/ai-integration.md](docs/ai-integration.md) for SQL query examples.
 ## Requirements
 
 - Python 3.9+
-- 2 pip dependencies: `markdown`, `pymupdf4llm`
+- 2 pip dependencies: `markdown`, `pymupdf>=1.24.0`
 - No database server — SQLite is built into Python
 
 ---

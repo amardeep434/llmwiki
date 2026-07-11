@@ -16,15 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **6 built-in adapters**:
   - `source-code` — 30+ languages with language-specific parsing (Java, Python, generic)
   - `xml` — XML structure extraction with inline script detection
-  - `pdf` — PDF-to-markdown conversion via `pymupdf4llm`
+  - `pdf` — PDF-to-markdown conversion via `pymupdf` with font-based heading detection, table extraction via `find_tables()`, sub-bullet glyph handling, image extraction to `assets/`, and header/footer stripping
   - `markdown` — Pass-through with frontmatter extraction
   - `config` — Configuration file documentation (JSON, YAML, TOML, INI, etc.)
   - `generic` — Fallback adapter for any text file
 - **Knowledge graph**:
-  - Cross-reference extraction from wiki links, Java imports, and class references
+  - Cross-reference extraction from wiki links, Java imports, class references, SailPoint API refs, and connector names
+  - **Title-based mention matching** — scans page bodies for other page titles to create `"mentions"` edges
   - Fuzzy reference resolution with partial slug matching
   - PageRank importance scoring (configurable iterations, 0.85 damping factor)
   - Topic cluster detection via BFS connected components
+- **Theme system**:
+  - Swappable themes via CSS custom properties
+  - Built-in themes: `emerald-dark` (default), `vodafone`
+  - Custom themes: create a `.py` file in `llmwiki/render/themes/`
+  - Config: `{"build": {"theme": "vodafone"}}` or `--theme` CLI flag
+  - `llmwiki themes` command to list available themes
+- **Three-panel UI layout**: sidebar + content + graph panel with responsive collapsing
+- **Mini graph panel**: canvas-based force-directed graph on every detail page (2-hop neighborhood, spring simulation, color-coded nodes)
 - **Dual search**:
   - Client-side JSON search index with Cmd+K / Ctrl+K command palette
   - SQLite FTS5 full-text search database for AI agents and CLI queries
@@ -37,13 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Static site generation**:
   - Dashboard with stats, category cards, and most-connected pages
   - Category index pages
-  - Individual page detail views with backlink navigation
+  - Individual page detail views with backlink navigation and mini graph
   - Dark/light theme with system preference detection
+- **CLI commands**: `init`, `ingest`, `clean`, `build`, `serve`, `search`, `graph`, `export`, `lint`, `stats`, `themes`, `diff`, `all`
+- **`llmwiki clean` command**: clean generated data (`--raw`, `--site`, `--all` flags)
+- **`llmwiki ingest --force`**: force re-ingest all files by clearing state cache
+- **`llmwiki build --theme`**: build with a specific theme override
 - **Incremental builds**: SHA-256 content hashing, only changed files re-processed
 - **Build state management**: `.llmwiki-state.json` tracks file hashes and build numbers
 - **Quality checks**: `llmwiki lint` detects orphaned pages, broken wiki links, missing titles
-- **CLI commands**: `init`, `ingest`, `build`, `serve`, `search`, `graph`, `export`, `lint`, `stats`, `diff`, `all`
 - **Local development server**: built-in HTTP server with configurable port and host
 - **Cross-platform support**: Windows, macOS, Linux
-- **Minimal dependencies**: `markdown` + `pymupdf4llm` only (all other functionality uses Python stdlib)
+- **Minimal dependencies**: `markdown` + `pymupdf>=1.24.0` (all other functionality uses Python stdlib)
+- **DESIGN.md**: full design system document
 - **Comprehensive test suite**: unit tests for all modules plus end-to-end tests

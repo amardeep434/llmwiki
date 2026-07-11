@@ -63,12 +63,13 @@ Run `llmwiki ingest` to extract content, then `llmwiki build` to generate the si
 Run adapters to extract content from source files into `raw/`.
 
 ```bash
-llmwiki ingest [--adapter NAME] [--config PATH]
+llmwiki ingest [--adapter NAME] [--force] [--config PATH]
 ```
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--adapter` | No | *(all adapters)* | Run only a specific adapter |
+| `--force` | No | `false` | Force re-ingest all files (ignore state cache) |
 | `--config` | No | `llmwiki.json` | Path to the configuration file |
 
 **Examples:**
@@ -83,6 +84,9 @@ llmwiki ingest --adapter source-code
 # Run only PDF ingestion
 llmwiki ingest --adapter pdf
 
+# Force re-ingest everything (ignores cached hashes)
+llmwiki ingest --force
+
 # Use a custom config location
 llmwiki ingest --config /path/to/llmwiki.json
 ```
@@ -96,7 +100,46 @@ llmwiki ingest --config /path/to/llmwiki.json
   Unchanged: 82
 ```
 
-**Incremental behavior:** Files are hashed with SHA-256. Only new or modified files are re-processed. The build state is stored in `.llmwiki-state.json`.
+**Incremental behavior:** Files are hashed with SHA-256. Only new or modified files are re-processed. The build state is stored in `.llmwiki-state.json`. Use `--force` to clear the state cache and re-process all files.
+
+---
+
+### `llmwiki clean`
+
+Clean generated data and reset state.
+
+```bash
+llmwiki clean [--raw] [--site] [--all] [--config PATH]
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--raw` | No | `false` | Clean `raw/` only (forces full re-ingest) |
+| `--site` | No | `false` | Clean `site/` only (forces rebuild) |
+| `--all` | No | `false` | Clean everything (raw + wiki + site + state) |
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
+
+If no specific flag is given, defaults to cleaning `site/`.
+
+**Examples:**
+
+```bash
+# Clean site (default)
+llmwiki clean
+
+# Clean raw (forces re-ingest of all files)
+llmwiki clean --raw
+
+# Clean everything and start fresh
+llmwiki clean --all
+```
+
+**Output:**
+
+```
+🧹 Cleaned: raw/, .llmwiki-state.json
+   Run `llmwiki ingest` to re-process all sources.
+```
 
 ---
 
@@ -105,12 +148,13 @@ llmwiki ingest --config /path/to/llmwiki.json
 Generate the static site from `raw/` pages.
 
 ```bash
-llmwiki build [--full] [--config PATH]
+llmwiki build [--full] [--theme THEME] [--config PATH]
 ```
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--full` | No | `false` | Force a full rebuild (ignore incremental state) |
+| `--theme` | No | *(from config)* | Theme name (e.g., `emerald-dark`, `vodafone`) |
 | `--config` | No | `llmwiki.json` | Path to the configuration file |
 
 **Examples:**
@@ -121,6 +165,9 @@ llmwiki build
 
 # Full rebuild
 llmwiki build --full
+
+# Build with a specific theme
+llmwiki build --theme vodafone
 ```
 
 **Output:**
@@ -226,10 +273,14 @@ Found 3 results for: database connection
 Rebuild the knowledge graph from `raw/` pages.
 
 ```bash
-llmwiki graph
+llmwiki graph [--config PATH]
 ```
 
-No flags. Regenerates `site/cross-references.json` with updated nodes, edges, clusters, and importance scores.
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
+
+Regenerates `site/cross-references.json` with updated nodes, edges, clusters, and importance scores.
 
 ---
 
@@ -238,10 +289,14 @@ No flags. Regenerates `site/cross-references.json` with updated nodes, edges, cl
 Generate AI-consumable export files.
 
 ```bash
-llmwiki export
+llmwiki export [--config PATH]
 ```
 
-No flags. Generates:
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
+
+Generates:
 - `site/llms.txt` — page index
 - `site/llms-full.txt` — full text dump (≤5 MB)
 - `site/graph.jsonld` — JSON-LD knowledge graph
@@ -254,10 +309,14 @@ No flags. Generates:
 Check for quality issues in the knowledge base.
 
 ```bash
-llmwiki lint
+llmwiki lint [--config PATH]
 ```
 
-No flags. Checks for:
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
+
+Checks for:
 - **Orphaned pages** (no inbound or outbound cross-references)
 - **Broken wiki links** (`[[target]]` where target doesn't match any page ID)
 - **Missing titles** (page title equals the slug/ID)
@@ -277,8 +336,12 @@ No flags. Checks for:
 Print inventory statistics for raw, wiki, and site directories.
 
 ```bash
-llmwiki stats
+llmwiki stats [--config PATH]
 ```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
 
 **Output:**
 
@@ -287,6 +350,30 @@ llmwiki stats
   Raw: 127 files
   Wiki: 0 files
   Site: 342 files
+```
+
+---
+
+### `llmwiki themes`
+
+List available UI themes.
+
+```bash
+llmwiki themes
+```
+
+No flags. Lists all registered themes with their descriptions.
+
+**Output:**
+
+```
+🎨 Available themes:
+
+  emerald-dark         — Dark-first with emerald accent. Inspired by Supabase/VoltAgent.
+  vodafone             — Bold Vodafone Red on dark surfaces. Monumental and confident.
+
+Usage: llmwiki build --theme <name>
+   Or: set "theme" in llmwiki.json under "build"
 ```
 
 ---
@@ -319,7 +406,7 @@ llmwiki all [--config PATH] [--full]
 **Equivalent to running:**
 
 ```bash
-llmwiki ingest && llmwiki build
+llmwiki ingest && llmwiki build && llmwiki graph && llmwiki export && llmwiki lint
 ```
 
 **Example:**
@@ -345,4 +432,24 @@ llmwiki all --full
 🔨 Building site...
   Pages: 127
   Categories: 12
+
+==================================================
+  GRAPH
+==================================================
+📊 Building knowledge graph...
+  Nodes: 127
+  Edges: 342
+  Clusters: 8
+
+==================================================
+  EXPORT
+==================================================
+📤 Exporting AI-consumable formats...
+  Generated: llms.txt, llms-full.txt, graph.jsonld, sitemap.xml
+
+==================================================
+  LINT
+==================================================
+🔍 Linting wiki...
+  ✅ No issues found.
 ```

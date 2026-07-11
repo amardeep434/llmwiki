@@ -117,6 +117,29 @@ llmwiki ingest --adapter source-code
 llmwiki ingest --adapter pdf
 ```
 
+**Tip:** To force re-ingestion of all files (ignoring the state cache):
+
+```bash
+llmwiki ingest --force
+```
+
+---
+
+## Step 4b: Clean (When Needed)
+
+If you need to start fresh or clear out stale data:
+
+```bash
+# Clean site/ (default) — forces a rebuild
+llmwiki clean
+
+# Clean raw/ — forces full re-ingest
+llmwiki clean --raw
+
+# Clean everything (raw + wiki + site + state)
+llmwiki clean --all
+```
+
 ---
 
 ## Step 5: Build the Site
@@ -147,6 +170,14 @@ This creates:
 llmwiki build --full
 ```
 
+**Tip:** Build with a specific theme:
+
+```bash
+llmwiki build --theme vodafone
+```
+
+Available built-in themes: `emerald-dark` (default), `vodafone`. Run `llmwiki themes` to see all options.
+
 ---
 
 ## Step 6: Serve and Browse
@@ -167,6 +198,7 @@ Open http://127.0.0.1:8765 in your browser. You'll see:
 - **Dashboard** with page count, edge count, cluster count
 - **Category cards** linking to each code/doc category
 - **Most-connected pages** ranked by inbound links
+- **Three-panel layout**: sidebar + content + graph panel
 - **Dark/light theme toggle**
 
 **Custom port or host:**

@@ -30,7 +30,7 @@ LLMWiki is configured via `llmwiki.json`, created automatically by `llmwiki init
   "build": {
     "out_dir": "site",
     "incremental": true,
-    "search_mode": "auto"
+    "theme": "emerald-dark"
   },
   "serve": {
     "port": 8765,
@@ -98,7 +98,15 @@ Array of PDF files or directories to ingest:
 |-------|------|---------|-------------|
 | `out_dir` | string | `"site"` | Output directory name for the generated site |
 | `incremental` | boolean | `true` | Enable incremental builds (skip unchanged files) |
-| `search_mode` | string | `"auto"` | Search index mode: `"auto"`, `"fts5"`, or `"json"` |
+| `theme` | string | `"emerald-dark"` | UI theme name. Built-in: `emerald-dark`, `vodafone`. Run `llmwiki themes` to list all. |
+
+**Theme override via CLI:**
+
+```bash
+llmwiki build --theme vodafone
+```
+
+The `--theme` flag overrides the config value for that build.
 
 ### `serve`
 
