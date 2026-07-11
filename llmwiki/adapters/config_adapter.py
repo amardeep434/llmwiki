@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
 
 _CONFIG_EXTS = {".json", ".yaml", ".yml", ".toml", ".properties", ".ini", ".env", ".cfg"}
 
@@ -42,7 +42,8 @@ class ConfigAdapter(BaseAdapter):
             sections.append("## Description\n\n" + " ".join(comments))
 
         # Full content
-        sections.append(f"## Contents\n\n```{lang}\n{content}\n```")
+        fence = _safe_fence(content)
+        sections.append(f"## Contents\n\n{fence}{lang}\n{content}\n{fence}")
 
         page = WikiPage(
             slug=f"config/{path.stem}".lower(),

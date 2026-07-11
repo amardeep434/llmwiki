@@ -7,12 +7,27 @@ Each function returns an HTML string for a specific page type.
 from __future__ import annotations
 
 import json
+import re
 from html import escape
 from typing import List, Tuple
 
 import markdown
 
 from llmwiki.render.js import PRE_PAINT_SCRIPT
+
+# --- HTML sanitization for markdown output ---
+_DANGEROUS_TAGS = re.compile(
+    r'<\s*/?\s*(script|iframe|object|embed|form|input|button|textarea|select|style|link|meta|base)\b[^>]*>',
+    re.IGNORECASE,
+)
+_EVENT_HANDLERS = re.compile(r'\s+on\w+\s*=', re.IGNORECASE)
+
+
+def _sanitize_html(html_str: str) -> str:
+    """Remove dangerous HTML tags and event handlers."""
+    html_str = _DANGEROUS_TAGS.sub('', html_str)
+    html_str = _EVENT_HANDLERS.sub(' data-removed=', html_str)
+    return html_str
 
 
 def page_head(title: str, description: str = "") -> str:
@@ -30,10 +45,10 @@ def page_head(title: str, description: str = "") -> str:
         '<link rel="stylesheet" href="/style.css">\n'
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/'
         'cdn-release@11.9.0/build/styles/github.min.css" '
-        'media="(prefers-color-scheme: light)">\n'
+        'media="(prefers-color-scheme: light)" crossorigin="anonymous">\n'
         '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/'
         'cdn-release@11.9.0/build/styles/github-dark.min.css" '
-        'media="(prefers-color-scheme: dark)">\n'
+        'media="(prefers-color-scheme: dark)" crossorigin="anonymous">\n'
         f'<script>{PRE_PAINT_SCRIPT}</script>\n'
         '</head>\n'
         '<body>\n'
@@ -96,7 +111,8 @@ def page_foot() -> str:
         '</div>\n'
         '</div>\n'
         '<script src="https://cdn.jsdelivr.net/gh/highlightjs/'
-        'cdn-release@11.9.0/build/highlight.min.js" defer></script>\n'
+        'cdn-release@11.9.0/build/highlight.min.js" defer '
+        'crossorigin="anonymous"></script>\n'
         '<script src="/script.js" defer></script>\n'
         '</body>\n'
         '</html>\n'
@@ -108,7 +124,7 @@ def md_to_html(body: str) -> str:
     md = markdown.Markdown(
         extensions=["fenced_code", "tables", "toc", "sane_lists"]
     )
-    return md.convert(body)
+    return _sanitize_html(md.convert(body))
 
 
 def render_dashboard(

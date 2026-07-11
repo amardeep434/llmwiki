@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
 
 
 @register
@@ -31,7 +31,8 @@ class GenericAdapter(BaseAdapter):
             return []
 
         lang = path.suffix.lstrip(".").lower() or "text"
-        body = f"## {path.name}\n\n```{lang}\n{content}\n```\n"
+        fence = _safe_fence(content)
+        body = f"## {path.name}\n\n{fence}{lang}\n{content}\n{fence}\n"
 
         page = WikiPage(
             slug=f"misc/{path.stem}".lower(),

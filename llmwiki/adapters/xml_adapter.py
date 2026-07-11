@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
 
 _JAVA_IMPORT_IN_BSH = re.compile(r"import\s+([\w.]+);")
 _REF_NAME_RE = re.compile(r'name="([^"]+)"')
@@ -74,14 +74,16 @@ class XMLAdapter(BaseAdapter):
             script_summary = []
             for step_name, script_body in scripts:
                 line_count = len(script_body.strip().splitlines())
+                fence = _safe_fence(script_body)
                 script_summary.append(
                     f"### {step_name} ({line_count} lines)\n\n"
-                    f"```java\n{script_body.strip()}\n```"
+                    f"{fence}java\n{script_body.strip()}\n{fence}"
                 )
                 # Optionally create separate BeanShell page
                 if config.get("extract_beanshell", False):
                     bsh_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", f"{name}__{step_name}").lower()
                     bsh_refs = _JAVA_IMPORT_IN_BSH.findall(script_body)
+                    bsh_fence = _safe_fence(script_body)
                     bsh_page = WikiPage(
                         slug=f"beanshell/{bsh_slug}",
                         title=f"{name} — {step_name}",
@@ -90,7 +92,7 @@ class XMLAdapter(BaseAdapter):
                         body=(
                             f"## {step_name}\n\n"
                             f"**Parent:** [[{name}]]\n\n"
-                            f"```java\n{script_body.strip()}\n```\n"
+                            f"{bsh_fence}java\n{script_body.strip()}\n{bsh_fence}\n"
                         ),
                         language="java",
                         tags=["beanshell", tag.lower()],
@@ -102,9 +104,10 @@ class XMLAdapter(BaseAdapter):
             sections.append("## Inline Scripts\n\n" + "\n\n".join(script_summary))
 
         # Full source
+        xml_fence = _safe_fence(content)
         sections.append(
             f"\n## Source\n\n<details>\n<summary>Full XML ({len(content.splitlines())} lines)</summary>\n\n"
-            f"```xml\n{content}\n```\n\n</details>"
+            f"{xml_fence}xml\n{content}\n{xml_fence}\n\n</details>"
         )
 
         body = "\n\n".join(sections)
@@ -176,12 +179,13 @@ class XMLAdapter(BaseAdapter):
         return f"{cat_safe}/{safe}".lower().strip("-/")
 
     def _fallback_page(self, path: Path, content: str) -> WikiPage:
+        fence = _safe_fence(content)
         page = WikiPage(
             slug=path.stem.lower(),
             title=path.stem,
             category="xml",
             source_path=str(path),
-            body=f"## {path.stem}\n\n```xml\n{content}\n```\n",
+            body=f"## {path.stem}\n\n{fence}xml\n{content}\n{fence}\n",
             language="xml",
         )
         page.compute_hash()

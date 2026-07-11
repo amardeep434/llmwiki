@@ -57,6 +57,19 @@ class WikiPage:
         return self.to_frontmatter() + "\n\n" + self.body
 
 
+def _safe_fence(content: str) -> str:
+    """Return a backtick fence string longer than any run in content."""
+    max_run = 0
+    current = 0
+    for ch in content:
+        if ch == '`':
+            current += 1
+            max_run = max(max_run, current)
+        else:
+            current = 0
+    return '`' * max(3, max_run + 1)
+
+
 class BaseAdapter(ABC):
     """All adapters implement this interface."""
 

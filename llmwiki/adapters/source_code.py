@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
 
 LANG_MAP: dict[str, str] = {
     ".java": "java", ".py": "python", ".js": "javascript", ".ts": "typescript",
@@ -60,7 +60,8 @@ class SourceCodeAdapter(BaseAdapter):
         else:
             body, refs, tags = self._parse_generic(content, title, lang)
 
-        body += f"\n\n## Source Code\n\n<details>\n<summary>Full source ({len(content.splitlines())} lines)</summary>\n\n```{lang}\n{content}\n```\n\n</details>\n"
+        fence = _safe_fence(content)
+        body += f"\n\n## Source Code\n\n<details>\n<summary>Full source ({len(content.splitlines())} lines)</summary>\n\n{fence}{lang}\n{content}\n{fence}\n\n</details>\n"
 
         page = WikiPage(
             slug=self._make_slug(path, category),
