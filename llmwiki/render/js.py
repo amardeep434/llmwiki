@@ -559,20 +559,15 @@ function renderNeuralGraph(container, graph) {
   var CFG_EXTS = {".properties":1,".json":1,".yaml":1,".yml":1,".toml":1,".ini":1,".env":1,".cfg":1};
 
   function detectContentType(n) {
-    var lang = (n.language || "").toLowerCase();
     var cat = (n.type || "").toLowerCase();
-    var tags = n.tags || [];
-    var src = n.source_path || n.id || "";
-    var dotIdx = src.lastIndexOf(".");
-    var ext = dotIdx >= 0 ? src.substring(dotIdx).toLowerCase() : "";
-    if (cat.indexOf("beanshell") === 0 || tags.indexOf("beanshell") >= 0) return "Inline Scripts";
+    /* Detect from category path (the only reliable field on graph nodes) */
+    if (cat.indexOf("beanshell") === 0) return "Inline Scripts";
     if (cat === "tokens") return "Token Registry";
-    if (tags.indexOf("pdf") >= 0 || ext === ".pdf") return "Documentation";
-    if (SOURCE_LANGS[lang]) return "Source Code";
-    if (lang === "xml" || XML_EXTS[ext]) return "XML / Markup";
-    if (DOC_EXTS[ext]) return "Documentation";
-    if (CFG_LANGS[lang] || CFG_EXTS[ext]) return "Configuration";
-    return "Other";
+    if (cat.indexOf("connector-guides") === 0 || cat.indexOf("iiq-docs") === 0 || cat === "docs") return "Documentation";
+    if (cat.indexOf("com/") === 0 || cat.indexOf("sailpoint/") === 0 || cat.indexOf("bsh/") === 0) return "Source Code";
+    if (cat === "config" || cat.indexOf("xml") === 0) return "Configuration";
+    /* Everything else (Rule, Workflow, EmailTemplate, Form, Task, SSF, Application, etc.) */
+    return "XML / Markup";
   }
 
   /* Color mapping for content type CSS variables */
