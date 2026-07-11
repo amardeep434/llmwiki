@@ -1294,7 +1294,7 @@ function initNeuralVis() {
                  highlight: { background: "#ffffff", border: color },
                  hover: { background: color, border: "#ffffff" } },
         font: { color: "#a1a1aa", size: Math.max(7, 8 + imp * 6), face: "sans-serif" },
-        title: (n.title || n.id) + " \u2014 " + cn + "\nImportance: " + imp.toFixed(3) + "\nRefs: " + (n.in_degree || 0),
+        title: (n.title || n.id) + " \u2014 " + cn + "\nImportance: " + imp.toFixed(3) + "\nRefs: " + (n.in_degree || 0) + (n.tags && n.tags.length ? "\nTags: " + n.tags.join(", ") : ""),
         _url: "/categories/" + cat + "/" + n.id.split("/").pop() + ".html",
       });
     }
@@ -1389,7 +1389,7 @@ var visNodes = rawNodes.map(function(n) {
     color: { background: typeColor(cat), border: typeColor(cat),
              highlight: { background: "#10b981", border: "#34d399" } },
     font: { color: fontColor, size: Math.max(9, size * 0.55) },
-    title: (n.title || n.id) + " (" + cat + ")\\nImportance: " + imp.toFixed(2),
+    title: (n.title || n.id) + " (" + cat + ")\\nImportance: " + imp.toFixed(2) + (n.tags && n.tags.length ? "\\nTags: " + n.tags.join(", ") : ""),
     _url: "/categories/" + cat.toLowerCase() + "/" + n.id.split("/").pop() + ".html",
   };
 });

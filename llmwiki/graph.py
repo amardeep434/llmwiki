@@ -57,6 +57,7 @@ def build_graph(raw_dir: Path) -> dict:
             "id": pid,
             "title": pdata.get("title", pid),
             "type": pdata.get("category", "unknown"),
+            "tags": pdata.get("tags", []),
             "in_degree": in_degree.get(pid, 0),
             "out_degree": out_degree.get(pid, 0),
             "importance": round(scores.get(pid, 0.0), 4),
