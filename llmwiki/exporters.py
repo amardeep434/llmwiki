@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 
 
@@ -64,7 +65,8 @@ def export_sitemap(pages: dict, output: Path, base_url: str) -> None:
     lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     for pid, pdata in pages.items():
         url = pdata.get("url", f"/{pid}.html")
-        lines.append(f"  <url><loc>{base_url}{url}</loc><lastmod>{now}</lastmod></url>")
+        safe_loc = escape(base_url + url)
+        lines.append(f"  <url><loc>{safe_loc}</loc><lastmod>{now}</lastmod></url>")
     lines.append("</urlset>")
     output.write_text("\n".join(lines), encoding="utf-8")
 

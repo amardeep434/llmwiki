@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 from llmwiki.adapters import _ensure_all_loaded, _REGISTRY
 from llmwiki.state import BuildState
+
+logger = logging.getLogger(__name__)
 
 
 def ingest_source(
@@ -51,7 +54,8 @@ def ingest_source(
             # Extract pages
             try:
                 pages = adapter.extract(fpath, config)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to process %s: %s", fpath, e)
                 counts["errors"] += 1
                 continue
 
@@ -112,7 +116,8 @@ def ingest_pdfs(
 
             try:
                 pages = adapter.extract(fpath, {"label": label})
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to process %s: %s", fpath, e)
                 counts["errors"] += 1
                 continue
 

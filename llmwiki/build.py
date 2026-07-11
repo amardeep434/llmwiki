@@ -13,6 +13,7 @@ from llmwiki.render.html import (
 )
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
+from llmwiki.search import create_search_db, insert_page
 
 
 def build_site(root: Path, config: dict, full: bool = False) -> dict:
@@ -136,7 +137,20 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         json.dumps(search_index, indent=2), encoding="utf-8"
     )
 
-    # 12. Return stats
+    # 12. Create and populate SQLite search database
+    db_path = site_dir / "llmwiki.db"
+    create_search_db(db_path)
+    for pid, pdata in pages.items():
+        insert_page(db_path, {
+            "id": pid,
+            "title": pdata.get("title", ""),
+            "category": pdata.get("category", ""),
+            "body_plain": pdata.get("body", ""),
+            "tags": json.dumps(pdata.get("tags", [])),
+            "importance_score": pdata.get("importance", 0),
+        })
+
+    # 13. Return stats
     return {
         "total_pages": len(pages),
         "total_categories": len(categories),

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 from llmwiki.crossref import extract_refs_from_body, build_edge_list

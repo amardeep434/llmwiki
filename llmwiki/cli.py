@@ -45,13 +45,16 @@ def main(argv: list[str] | None = None) -> int:
     p_search.add_argument("query", help="Search query")
 
     # graph
-    sub.add_parser("graph", help="Rebuild knowledge graph")
+    p_graph = sub.add_parser("graph", help="Rebuild knowledge graph")
+    p_graph.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # export
-    sub.add_parser("export", help="Generate AI-consumable exports")
+    p_export = sub.add_parser("export", help="Generate AI-consumable exports")
+    p_export.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # lint
-    sub.add_parser("lint", help="Check for broken links and orphans")
+    p_lint = sub.add_parser("lint", help="Check for broken links and orphans")
+    p_lint.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # stats
     sub.add_parser("stats", help="Print inventory statistics")
@@ -76,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         "build": _cmd_build,
         "serve": _cmd_serve,
         "search": _cmd_search,
+        "graph": _cmd_graph,
+        "export": _cmd_export,
+        "lint": _cmd_lint,
         "all": _cmd_all,
         "stats": _cmd_stats,
     }
@@ -134,11 +140,16 @@ def _cmd_init(args) -> int:
 
 def _cmd_ingest(args) -> int:
     """Run ingestion pipeline."""
-    from llmwiki.config import load_config
+    from llmwiki.config import load_config, validate_config
     from llmwiki.ingest import ingest_all
 
     cfg_path = Path(args.config)
     config = load_config(cfg_path)
+    errors = validate_config(config)
+    if errors:
+        for e in errors:
+            print(f"Config error: {e}", file=sys.stderr)
+        return 1
     raw_dir = cfg_path.parent / "raw"
     raw_dir.mkdir(exist_ok=True)
     state_path = cfg_path.parent / ".llmwiki-state.json"
@@ -155,16 +166,16 @@ def _cmd_ingest(args) -> int:
 
 def _cmd_build(args) -> int:
     """Build wiki and site from raw."""
-    try:
-        from llmwiki.build import build_site
-    except ImportError:
-        print("Build module not yet implemented. Run `llmwiki ingest` first.", file=sys.stderr)
-        return 1
-
-    from llmwiki.config import load_config
+    from llmwiki.build import build_site
+    from llmwiki.config import load_config, validate_config
 
     cfg_path = Path(args.config)
     config = load_config(cfg_path)
+    errors = validate_config(config)
+    if errors:
+        for e in errors:
+            print(f"Config error: {e}", file=sys.stderr)
+        return 1
     root = cfg_path.parent
 
     print("🔨 Building site...")
@@ -188,21 +199,13 @@ def _cmd_build(args) -> int:
 
 def _cmd_serve(args) -> int:
     """Serve the site locally."""
-    try:
-        from llmwiki.serve import serve_site
-    except ImportError:
-        print("Serve module not yet implemented.", file=sys.stderr)
-        return 1
+    from llmwiki.serve import serve_site
     return serve_site("site", port=args.port, host=args.host)
 
 
 def _cmd_search(args) -> int:
     """Search the knowledge base via SQLite FTS5."""
-    try:
-        from llmwiki.search import cli_search
-    except ImportError:
-        print("Search module not yet implemented.", file=sys.stderr)
-        return 1
+    from llmwiki.search import cli_search
     return cli_search(args.query, "site/llmwiki.db")
 
 
@@ -211,6 +214,9 @@ def _cmd_all(args) -> int:
     for cmd_name, cmd_func in [
         ("ingest", lambda: _cmd_ingest(args)),
         ("build", lambda: _cmd_build(args)),
+        ("graph", lambda: _cmd_graph(args)),
+        ("export", lambda: _cmd_export(args)),
+        ("lint", lambda: _cmd_lint(args)),
     ]:
         print(f"\n{'='*50}")
         print(f"  {cmd_name.upper()}")
@@ -219,6 +225,67 @@ def _cmd_all(args) -> int:
         if ret != 0:
             return ret
     return 0
+
+
+def _cmd_graph(args) -> int:
+    """Build knowledge graph."""
+    from llmwiki.config import load_config
+    from llmwiki.graph import build_graph, save_graph
+
+    cfg_path = Path(args.config)
+    config = load_config(cfg_path)
+    root = cfg_path.parent
+    raw_dir = root / "raw"
+    site_dir = root / config.get("build", {}).get("out_dir", "site")
+    print("📊 Building knowledge graph...")
+    graph = build_graph(raw_dir)
+    save_graph(graph, site_dir / "cross-references.json")
+    print(f"  Nodes: {graph['stats']['total_pages']}")
+    print(f"  Edges: {graph['stats']['total_edges']}")
+    print(f"  Clusters: {graph['stats']['total_clusters']}")
+    return 0
+
+
+def _cmd_export(args) -> int:
+    """Generate AI-consumable exports."""
+    from llmwiki.config import load_config
+    from llmwiki.graph import _load_pages
+    from llmwiki.exporters import export_all
+
+    cfg_path = Path(args.config)
+    config = load_config(cfg_path)
+    root = cfg_path.parent
+    raw_dir = root / "raw"
+    site_dir = root / config.get("build", {}).get("out_dir", "site")
+    pages = _load_pages(raw_dir)
+    for pid, pdata in pages.items():
+        pdata["url"] = f"/categories/{pid}.html"
+    project_name = config.get("project", {}).get("name", "")
+    print("📤 Exporting AI-consumable formats...")
+    export_all(pages, site_dir, project_name)
+    print("  Generated: llms.txt, llms-full.txt, graph.jsonld, sitemap.xml")
+    return 0
+
+
+def _cmd_lint(args) -> int:
+    """Lint wiki for quality issues."""
+    from llmwiki.config import load_config
+    from llmwiki.graph import build_graph
+    from llmwiki.lint import lint_wiki
+
+    cfg_path = Path(args.config)
+    config = load_config(cfg_path)
+    root = cfg_path.parent
+    raw_dir = root / "raw"
+    print("🔍 Linting wiki...")
+    graph = build_graph(raw_dir)
+    issues = lint_wiki(raw_dir, graph)
+    for issue in issues:
+        icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(issue["severity"], "•")
+        print(f"  {icon} [{issue['rule']}] {issue['page']}: {issue['message']}")
+    if not issues:
+        print("  ✅ No issues found.")
+    return 1 if any(i["severity"] == "error" for i in issues) else 0
 
 
 def _cmd_stats(args) -> int:
