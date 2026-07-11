@@ -1122,24 +1122,34 @@ function initPaletteInput() {
 
 /* ===== Method Anchor Scroll (handles nested overflow containers) ===== */
 function initMethodLinks() {
-  document.addEventListener("click", function(e) {
-    var link = e.target.closest(".method-link");
-    if (!link) return;
-    var href = link.getAttribute("href");
-    if (!href || href.charAt(0) !== "#") return;
-    e.preventDefault();
-    var target = document.getElementById(href.substring(1));
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    /* Flash highlight */
-    target.style.background = "rgba(16,185,129,0.3)";
-    target.style.borderRadius = "3px";
-    target.style.padding = "0 3px";
-    setTimeout(function() {
-      target.style.background = "";
-      target.style.padding = "";
-    }, 2000);
-  });
+  var mainEl = document.querySelector(".main");
+  if (!mainEl) return;
+  var links = document.querySelectorAll(".method-link[data-target]");
+  for (var i = 0; i < links.length; i++) {
+    (function(link) {
+      link.addEventListener("click", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var targetId = link.getAttribute("data-target");
+        var target = document.getElementById(targetId);
+        if (!target) return;
+        /* Calculate offset within .main scroll container */
+        var targetRect = target.getBoundingClientRect();
+        var mainRect = mainEl.getBoundingClientRect();
+        var scrollOffset = targetRect.top - mainRect.top + mainEl.scrollTop - (mainEl.clientHeight / 3);
+        mainEl.scrollTo({ top: scrollOffset, behavior: "smooth" });
+        /* Flash highlight */
+        target.style.background = "rgba(16,185,129,0.4)";
+        target.style.padding = "1px 6px";
+        target.style.borderRadius = "3px";
+        target.style.transition = "background 0.5s";
+        setTimeout(function() {
+          target.style.background = "";
+          target.style.padding = "";
+        }, 2500);
+      });
+    })(links[i]);
+  }
 }
 
 /* ===== Init ===== */

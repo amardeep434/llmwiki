@@ -211,20 +211,12 @@ def _add_method_anchors(html_body: str) -> str:
         flags=re.DOTALL,
     )
 
-    # 2. Then convert list items to anchor links with inline scroll handler
+    # 2. Then convert list items to anchor links with scroll handler
     for m in methods:
-        onclick = (
-            f"event.preventDefault();"
-            f"var t=document.getElementById('method-{m}');"
-            f"if(t){{t.scrollIntoView({{behavior:'smooth',block:'center'}});"
-            f"t.style.background='rgba(16,185,129,0.35)';"
-            f"t.style.padding='0 4px';"
-            f"t.style.borderRadius='3px';"
-            f"setTimeout(function(){{t.style.background='';t.style.padding='';}},2500);}}"
-        )
         html_body = html_body.replace(
             f'<li><code>{m}()</code></li>',
-            f'<li><a href="#method-{m}" class="method-link" onclick="{onclick}">'
+            f'<li><a href="javascript:void(0)" class="method-link" '
+            f'data-target="method-{m}">'
             f'<code>{m}()</code></a></li>',
         )
 
