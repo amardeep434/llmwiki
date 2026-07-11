@@ -17,6 +17,7 @@ from llmwiki.render.html import (
 )
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
+from llmwiki.render.themes import get_theme
 from llmwiki.search import create_search_db, insert_page
 
 
@@ -121,8 +122,11 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         pdata["category"] = cat
         categories.setdefault(cat, []).append({**pdata, "id": pid})
 
-    # 7. Write style.css and script.js
-    (site_dir / "style.css").write_text(CSS, encoding="utf-8")
+    # 7. Write style.css (with theme) and script.js
+    theme_name = config.get("build", {}).get("theme", "emerald-dark")
+    theme = get_theme(theme_name)
+    themed_css = theme.to_css() + "\n" + CSS
+    (site_dir / "style.css").write_text(themed_css, encoding="utf-8")
     (site_dir / "script.js").write_text(JS, encoding="utf-8")
 
     # 8. Render dashboard → index.html

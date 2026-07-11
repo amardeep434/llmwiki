@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     # build
     p_build = sub.add_parser("build", help="Build wiki/ and site/ from raw/")
     p_build.add_argument("--full", action="store_true", help="Force full rebuild")
+    p_build.add_argument("--theme", help="Theme name (e.g., emerald-dark, vodafone)")
     p_build.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # serve
@@ -60,6 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     p_stats = sub.add_parser("stats", help="Print inventory statistics")
     p_stats.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # themes
+    sub.add_parser("themes", help="List available UI themes")
+
     # diff
     sub.add_parser("diff", help="Show changes since last build")
 
@@ -85,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         "lint": _cmd_lint,
         "all": _cmd_all,
         "stats": _cmd_stats,
+        "themes": _cmd_themes,
     }
 
     handler = dispatch.get(args.command)
@@ -177,6 +182,11 @@ def _cmd_build(args) -> int:
         for e in errors:
             print(f"Config error: {e}", file=sys.stderr)
         return 1
+
+    # CLI --theme overrides config
+    if getattr(args, 'theme', None):
+        config.setdefault("build", {})["theme"] = args.theme
+
     root = cfg_path.parent
 
     print("🔨 Building site...")
@@ -303,4 +313,15 @@ def _cmd_stats(args) -> int:
             print(f"  {label}: {count} files")
         else:
             print(f"  {label}: not built")
+    return 0
+
+
+def _cmd_themes(args) -> int:
+    """List available UI themes."""
+    from llmwiki.render.themes import list_themes
+    print("🎨 Available themes:\n")
+    for t in list_themes():
+        print(f"  {t['name']:20s} — {t['description']}")
+    print(f"\nUsage: llmwiki build --theme <name>")
+    print(f"   Or: set \"theme\" in llmwiki.json under \"build\"")
     return 0
