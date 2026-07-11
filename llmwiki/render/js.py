@@ -469,27 +469,34 @@ function initFilterBar() {
         + '<span class="search-results-inline__label">All pages matching \u201c' + query.replace(/</g,"&lt;") + '\u201d</span>'
         + '<span class="search-results-inline__count">' + results.length + ' results</span>'
         + '</div>';
-      html += '<div class="search-results-inline__list">';
+      html += '<div class="table-wrap"><table><thead><tr>'
+        + '<th>Name</th><th>Type</th><th>Tags</th><th>Refs</th><th>Importance</th>'
+        + '</tr></thead><tbody>';
       results.forEach(function(entry) {
         var title = (entry.title || entry.id || "").replace(/</g, "&lt;");
-        var cat = (entry.category || "").replace(/</g, "&lt;").replace(/\//g, " \u203a ");
+        var cat = (entry.category || "").replace(/</g, "&lt;");
         var url = entry.url || "#";
         var imp = entry.importance || 0;
         var impPct = Math.round(imp * 100);
-        var tags = (entry.tags || []).filter(function(t) { return !t.startsWith("method:"); }).slice(0, 4).map(function(t) {
+        var badgeBase = cat.split("/")[0].toLowerCase();
+        var badgeMap = {rule:"beanshell",workflow:"xml",application:"config",task:"java",
+          beanshell:"beanshell",config:"config",docs:"docs","connector-guides":"docs",
+          "iiq-docs":"docs",java:"java",xml:"xml",tokens:"tokens"};
+        var badgeCls = badgeMap[badgeBase] || "config";
+        var badgeLabels = {java:"Java",xml:"XML",beanshell:"BSH",config:"Config",docs:"Docs",tokens:"Token"};
+        var badgeLabel = badgeLabels[badgeCls] || badgeCls.toUpperCase();
+        var tags = (entry.tags || []).filter(function(t) { return !t.startsWith("method:"); }).slice(0, 3).map(function(t) {
           return '<span class="tag">' + t.replace(/</g, "&lt;") + '</span>';
         }).join(" ");
-        html += '<a href="' + url + '" class="search-results-inline__item">'
-          + '<div class="search-results-inline__main">'
-          + '<span class="search-results-inline__title">' + title + '</span>'
-          + '<span class="search-results-inline__tags">' + tags + '</span>'
-          + '</div>'
-          + '<div class="search-results-inline__meta">'
-          + '<span class="search-results-inline__cat">' + cat + '</span>'
-          + '</div>'
-          + '</a>';
+        html += '<tr>'
+          + '<td class="td-accent"><a href="' + url + '">' + title + '</a></td>'
+          + '<td><span class="badge badge--' + badgeCls + '">' + badgeLabel + '</span></td>'
+          + '<td>' + tags + '</td>'
+          + '<td class="td-mono">' + (entry.importance ? Math.round((entry.importance || 0) * 1000) : 0) + '</td>'
+          + '<td><div class="connected__bar" style="width:60px"><div class="connected__bar-fill" style="width:' + impPct + '%"></div></div></td>'
+          + '</tr>';
       });
-      html += '</div>';
+      html += '</tbody></table></div>';
       inlineResults.innerHTML = html;
       inlineResults.style.display = "block";
       return;
