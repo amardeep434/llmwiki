@@ -275,6 +275,8 @@ tbody td.td-accent { color: var(--accent); font-weight: 500; }
 .badge--tokens { background: color-mix(in srgb, var(--node-tokens) 15%, transparent); color: var(--node-tokens); }
 
 /* ─── Command Palette ─── */
+.palette-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding-top: 20vh; }
+.palette-overlay[hidden] { display: none !important; }
 .palette { background: var(--surface-0); border: 1px solid var(--hairline); border-radius: 12px; width: 560px; max-width: 100%; overflow: hidden; box-shadow: 0 0 0 1px var(--hairline-strong); }
 .palette__input-wrap { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--hairline); }
 .palette__icon { color: var(--ink-subtle); font-size: 14px; }

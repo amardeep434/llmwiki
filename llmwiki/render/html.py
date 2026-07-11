@@ -104,9 +104,7 @@ def page_foot() -> str:
     """Generate command palette + scripts + closing tags."""
     return (
         '\n<!-- Command Palette -->\n'
-        '<div id="command-palette" class="palette-overlay" hidden '
-        'style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;'
-        'display:flex;align-items:flex-start;justify-content:center;padding-top:20vh;">\n'
+        '<div id="command-palette" class="palette-overlay" hidden>\n'
         '<div class="palette">\n'
         '<div class="palette__input-wrap">\n'
         '<span class="palette__icon">\u2315</span>\n'
