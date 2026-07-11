@@ -17,7 +17,7 @@ from llmwiki.render.html import (
 )
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
-from llmwiki.render.themes import get_theme
+from llmwiki.render.themes import get_theme, get_all_js_themes, get_theme_labels, get_color_options
 from llmwiki.search import create_search_db, insert_page
 
 
@@ -136,6 +136,16 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     (site_dir / "style.css").write_text(themed_css, encoding="utf-8")
     (site_dir / "script.js").write_text(JS, encoding="utf-8")
 
+    # Build JS theme data for runtime color switching
+    themes_json = json.dumps(get_all_js_themes())
+    theme_labels_json = json.dumps(get_theme_labels())
+    color_options = get_color_options()
+    theme_kwargs = {
+        "themes_json": themes_json,
+        "theme_labels_json": theme_labels_json,
+        "color_options": color_options,
+    }
+
     # 8. Render dashboard → index.html
     top_pages = sorted(
         [
@@ -151,7 +161,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     )
     cat_summary = {cat: {"count": len(pgs)} for cat, pgs in categories.items()}
     dashboard_html = render_dashboard(
-        graph["stats"], [], cat_summary, top_pages
+        graph["stats"], [], cat_summary, top_pages, **theme_kwargs,
     )
     (site_dir / "index.html").write_text(dashboard_html, encoding="utf-8")
 
@@ -160,7 +170,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     cat_dir.mkdir(exist_ok=True)
 
     # Render categories/index.html listing all categories
-    all_cats_html = render_categories_index(categories)
+    all_cats_html = render_categories_index(categories, **theme_kwargs)
     (cat_dir / "index.html").write_text(all_cats_html, encoding="utf-8")
 
     for cat, cat_pages in categories.items():
@@ -170,7 +180,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         cat_path.mkdir(parents=True, exist_ok=True)
 
         # Category index page
-        idx_html = render_category_index(cat, cat_pages)
+        idx_html = render_category_index(cat, cat_pages, **theme_kwargs)
         (cat_path / "index.html").write_text(idx_html, encoding="utf-8")
 
         # Individual page details + JSON siblings
@@ -179,7 +189,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             slug = pid.split("/")[-1] if "/" in pid else pid
 
             # Page detail HTML
-            page_html = render_page_detail(pdata, backlinks.get(pid, []))
+            page_html = render_page_detail(pdata, backlinks.get(pid, []),
+                                           **theme_kwargs)
             (cat_path / f"{slug}.html").write_text(
                 page_html, encoding="utf-8"
             )
@@ -218,7 +229,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         })
 
     # 13. Generate graph.html (interactive knowledge graph)
-    graph_html = render_graph_page(graph)
+    graph_html = render_graph_page(graph, **theme_kwargs)
     (site_dir / "graph.html").write_text(graph_html, encoding="utf-8")
 
     # 14. Generate changelog.html and update build-history.json
@@ -234,7 +245,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     history.append(build_entry)
     history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
 
-    changelog_html = render_changelog_page(history)
+    changelog_html = render_changelog_page(history, **theme_kwargs)
     (site_dir / "changelog.html").write_text(changelog_html, encoding="utf-8")
 
     # 15. Return stats

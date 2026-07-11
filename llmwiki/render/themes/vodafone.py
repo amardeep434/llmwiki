@@ -11,43 +11,46 @@ register_theme(Theme(
     description="Bold Vodafone Red on dark surfaces. Monumental and confident.",
 
     # Vodafone Red palette
-    accent="#e60000",              # Vodafone Red
-    accent_hover="#ff1a1a",        # Lighter red on hover
-    accent_muted="#7a0000",        # Dark red for backgrounds
-    accent_subtle="#2d0000",       # Very dark red tint
+    accent="#e60000",
+    accent_hover="#ff1a1a",
+    accent_muted="#7a0000",
+    accent_subtle="#2d0000",
 
-    # Dark surfaces (slightly warm)
-    canvas="#0a0a0a",              # Pure near-black
-    surface_0="#141414",           # Card background
-    surface_1="#1c1c1c",           # Elevated surface
-    surface_2="#262626",           # Hover state
-    surface_3="#303030",           # Active/selected
+    # Dark surfaces
+    canvas="#0a0a0a",
+    surface_0="#141414",
+    surface_1="#1c1c1c",
+    surface_2="#262626",
+    surface_3="#303030",
 
-    # Text (warm white)
-    ink="#f5f5f5",                 # Primary text
-    ink_muted="#a3a3a3",           # Secondary text
-    ink_subtle="#737373",          # Tertiary
-    ink_faint="#525252",           # Disabled
+    # Text
+    ink="#f5f5f5",
+    ink_muted="#a3a3a3",
+    ink_subtle="#737373",
+    ink_faint="#525252",
 
     # Borders
-    hairline="#262626",            # Subtle
-    hairline_strong="#404040",     # Prominent
+    hairline="#262626",
+    hairline_strong="#404040",
 
-    # Semantic (adjusted for red accent)
-    success="#22c55e",             # Green (distinct from accent)
-    warning="#f59e0b",             # Amber
-    error="#e60000",               # Same as accent (intentional for Vodafone)
-    info="#3b82f6",                # Blue
+    # Semantic
+    success="#22c55e",
+    warning="#f59e0b",
+    error="#e60000",
+    info="#3b82f6",
 
-    # Graph nodes (adjusted to complement red)
-    node_java="#f59e0b",           # Amber
-    node_xml="#3b82f6",            # Blue
-    node_beanshell="#a855f7",      # Purple
-    node_docs="#22c55e",           # Green
-    node_config="#06b6d4",         # Cyan
-    node_tokens="#f97316",         # Orange
+    # Graph nodes (matching preview)
+    node_java="#f59e0b",
+    node_xml="#818cf8",
+    node_beanshell="#f472b6",
+    node_docs="#e60000",
+    node_config="#a78bfa",
+    node_tokens="#fb923c",
 
-    # Light mode
+    # Light mode (matching preview vodafone-light)
+    light_accent_hover="#cc0000",
+    light_accent_muted="#fecaca",
+    light_accent_subtle="#fef2f2",
     light_canvas="#ffffff",
     light_surface_0="#f9fafb",
     light_surface_1="#f3f4f6",
@@ -56,6 +59,13 @@ register_theme(Theme(
     light_ink="#111827",
     light_ink_muted="#4b5563",
     light_ink_subtle="#6b7280",
+    light_ink_faint="#9ca3af",
     light_hairline="#e5e7eb",
     light_hairline_strong="#d1d5db",
+    light_node_java="#d97706",
+    light_node_xml="#4f46e5",
+    light_node_beanshell="#db2777",
+    light_node_docs="#dc2626",
+    light_node_config="#7c3aed",
+    light_node_tokens="#ea580c",
 ))

@@ -55,6 +55,9 @@ class Theme:
     node_tokens: str = "#f97316"
 
     # Light mode overrides
+    light_accent_hover: str = "#059669"
+    light_accent_muted: str = "#a7f3d0"
+    light_accent_subtle: str = "#ecfdf5"
     light_canvas: str = "#fafafa"
     light_surface_0: str = "#ffffff"
     light_surface_1: str = "#f4f4f5"
@@ -63,8 +66,18 @@ class Theme:
     light_ink: str = "#18181b"
     light_ink_muted: str = "#52525b"
     light_ink_subtle: str = "#71717a"
+    light_ink_faint: str = "#a1a1aa"
     light_hairline: str = "#e4e4e7"
     light_hairline_strong: str = "#d4d4d8"
+    light_node_java: str = "#d97706"
+    light_node_xml: str = "#4f46e5"
+    light_node_beanshell: str = "#db2777"
+    light_node_docs: str = "#059669"
+    light_node_config: str = "#7c3aed"
+    light_node_tokens: str = "#ea580c"
+
+    # Color family name (for JS theme keys). Derived from name if not set.
+    color_name: str = ""
 
     # Typography (optional overrides)
     font_sans: str = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
@@ -104,6 +117,9 @@ class Theme:
 }}"""
 
         light = f"""[data-theme="light"] {{
+  --accent-hover: {self.light_accent_hover};
+  --accent-muted: {self.light_accent_muted};
+  --accent-subtle: {self.light_accent_subtle};
   --canvas: {self.light_canvas};
   --surface-0: {self.light_surface_0};
   --surface-1: {self.light_surface_1};
@@ -112,11 +128,84 @@ class Theme:
   --ink: {self.light_ink};
   --ink-muted: {self.light_ink_muted};
   --ink-subtle: {self.light_ink_subtle};
+  --ink-faint: {self.light_ink_faint};
   --hairline: {self.light_hairline};
   --hairline-strong: {self.light_hairline_strong};
+  --node-java: {self.light_node_java};
+  --node-xml: {self.light_node_xml};
+  --node-beanshell: {self.light_node_beanshell};
+  --node-docs: {self.light_node_docs};
+  --node-config: {self.light_node_config};
+  --node-tokens: {self.light_node_tokens};
 }}"""
 
         return f"{dark}\n\n{light}\n"
+
+    def _get_color_name(self) -> str:
+        """Get the color family name (without -dark/-light suffix)."""
+        if self.color_name:
+            return self.color_name
+        # Strip trailing -dark or -light from name
+        n = self.name
+        if n.endswith("-dark"):
+            return n[:-5]
+        if n.endswith("-light"):
+            return n[:-6]
+        return n
+
+    def to_js_theme_dict(self) -> dict:
+        """Return dark and light theme dicts for JS runtime switching."""
+        cn = self._get_color_name()
+        dark = {
+            "--accent": self.accent,
+            "--accent-hover": self.accent_hover,
+            "--accent-muted": self.accent_muted,
+            "--accent-subtle": self.accent_subtle,
+            "--canvas": self.canvas,
+            "--surface-0": self.surface_0,
+            "--surface-1": self.surface_1,
+            "--surface-2": self.surface_2,
+            "--surface-3": self.surface_3,
+            "--ink": self.ink,
+            "--ink-muted": self.ink_muted,
+            "--ink-subtle": self.ink_subtle,
+            "--ink-faint": self.ink_faint,
+            "--hairline": self.hairline,
+            "--hairline-strong": self.hairline_strong,
+            "--node-java": self.node_java,
+            "--node-xml": self.node_xml,
+            "--node-beanshell": self.node_beanshell,
+            "--node-docs": self.node_docs,
+            "--node-config": self.node_config,
+            "--node-tokens": self.node_tokens,
+        }
+        light = {
+            "--accent": self.accent,
+            "--accent-hover": self.light_accent_hover,
+            "--accent-muted": self.light_accent_muted,
+            "--accent-subtle": self.light_accent_subtle,
+            "--canvas": self.light_canvas,
+            "--surface-0": self.light_surface_0,
+            "--surface-1": self.light_surface_1,
+            "--surface-2": self.light_surface_2,
+            "--surface-3": self.light_surface_3,
+            "--ink": self.light_ink,
+            "--ink-muted": self.light_ink_muted,
+            "--ink-subtle": self.light_ink_subtle,
+            "--ink-faint": self.light_ink_faint,
+            "--hairline": self.light_hairline,
+            "--hairline-strong": self.light_hairline_strong,
+            "--node-java": self.light_node_java,
+            "--node-xml": self.light_node_xml,
+            "--node-beanshell": self.light_node_beanshell,
+            "--node-docs": self.light_node_docs,
+            "--node-config": self.light_node_config,
+            "--node-tokens": self.light_node_tokens,
+        }
+        return {
+            f"{cn}-dark": dark,
+            f"{cn}-light": light,
+        }
 
 
 # --- Theme Registry ---
@@ -152,3 +241,32 @@ def _ensure_loaded() -> None:
     if _REGISTRY:
         return
     from llmwiki.render.themes import emerald_dark, vodafone  # noqa: F401
+
+
+def get_all_js_themes() -> dict:
+    """Return combined JS theme dict for all registered themes."""
+    _ensure_loaded()
+    result = {}
+    for theme in _REGISTRY.values():
+        result.update(theme.to_js_theme_dict())
+    return result
+
+
+def get_theme_labels() -> dict:
+    """Return {theme_key: display_label} for all themes."""
+    _ensure_loaded()
+    result = {}
+    for theme in _REGISTRY.values():
+        cn = theme._get_color_name()
+        # Use the color family name (capitalized) rather than display_name
+        # to avoid "Emerald Dark Dark"
+        dn = cn.replace("-", " ").title()
+        result[f"{cn}-dark"] = f"{dn} Dark"
+        result[f"{cn}-light"] = f"{dn} Light"
+    return result
+
+
+def get_color_options() -> list:
+    """Return list of (value, display_name) for the color theme selector."""
+    _ensure_loaded()
+    return [(t._get_color_name(), t.display_name) for t in _REGISTRY.values()]

@@ -2,6 +2,7 @@
 
 All HTML is generated programmatically — no template files.
 Each function returns an HTML string for a specific page type.
+Ported from approved preview — pixel-accurate match.
 """
 
 from __future__ import annotations
@@ -35,18 +36,50 @@ def _format_category_display(name: str) -> str:
     return name.replace("-", " ").replace("/", " \u203a ").title()
 
 
+# --- Badge helpers ---
+
+_TYPE_BADGE_MAP = {
+    "rule": "beanshell", "beanshell": "beanshell",
+    "workflow": "xml", "application": "config",
+    "task": "java", "report": "java", "custom": "config",
+    "connector-guides": "docs", "iiq-docs": "docs", "docs": "docs",
+    "config": "config", "java": "java", "xml": "xml", "tokens": "tokens",
+}
+
+_BADGE_LABELS = {
+    "java": "Java", "xml": "XML", "beanshell": "BSH",
+    "config": "Config", "docs": "Docs", "tokens": "Token",
+}
+
+
+def _type_badge(category: str) -> str:
+    """Return a type badge HTML span."""
+    base = category.split("/")[0].lower() if category else "config"
+    badge_type = _TYPE_BADGE_MAP.get(base, "config")
+    label = _BADGE_LABELS.get(badge_type, badge_type.upper())
+    return f'<span class="badge badge--{badge_type}">{escape(label)}</span>'
+
+
 # ===========================================================================
 # HEAD / FOOT
 # ===========================================================================
 
 
-def page_head(title: str, description: str = "") -> str:
-    """Generate <!DOCTYPE> through opening <body> with three-panel layout start."""
+def page_head(title: str, description: str = "",
+              themes_json: str = "", theme_labels_json: str = "",
+              color_options: list = None) -> str:
+    """Generate <!DOCTYPE> through opening <body> with shell layout start."""
     safe_title = escape(title)
     safe_desc = escape(description)
+    theme_script = ""
+    if themes_json:
+        theme_script = (
+            f'<script>window.LLMWIKI_THEMES={themes_json};'
+            f'window.LLMWIKI_THEME_LABELS={theme_labels_json};</script>\n'
+        )
     return (
         '<!DOCTYPE html>\n'
-        '<html lang="en">\n'
+        '<html lang="en" data-theme="dark">\n'
         '<head>\n'
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
@@ -61,6 +94,7 @@ def page_head(title: str, description: str = "") -> str:
         'cdn-release@11.9.0/build/styles/github-dark.min.css" '
         'crossorigin="anonymous">\n'
         f'<script>{PRE_PAINT_SCRIPT}</script>\n'
+        f'{theme_script}'
         '</head>\n'
         '<body>\n'
     )
@@ -70,26 +104,36 @@ def page_foot() -> str:
     """Generate command palette + scripts + closing tags."""
     return (
         '\n<!-- Command Palette -->\n'
-        '<div id="command-palette" class="palette-overlay" hidden>\n'
-        '<div class="palette-dialog">\n'
-        '<input type="text" class="palette-input" '
+        '<div id="command-palette" class="palette-overlay" hidden '
+        'style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;'
+        'display:flex;align-items:flex-start;justify-content:center;padding-top:20vh;">\n'
+        '<div class="palette">\n'
+        '<div class="palette__input-wrap">\n'
+        '<span class="palette__icon">\u2315</span>\n'
+        '<input type="text" class="palette__input" '
         'placeholder="Search pages\u2026 (type:, category:, tag:)" autocomplete="off">\n'
-        '<div class="palette-results"></div>\n'
-        '<div class="palette-hints">'
-        '<span>\u2191\u2193 navigate</span>'
-        '<span>\u21b5 open</span>'
-        '<span>esc close</span>'
-        '<span>\u2318K search</span>'
+        '</div>\n'
+        '<div class="palette__results" style="max-height:320px;overflow-y:auto;"></div>\n'
+        '<div class="palette__footer">'
+        '<kbd>\u2191\u2193</kbd> navigate '
+        '<kbd>\u21b5</kbd> open '
+        '<kbd>esc</kbd> close '
+        '<kbd>\u2318K</kbd> search'
         '</div>\n'
         '</div>\n'
         '</div>\n'
         '<!-- Bottom Tab Bar (mobile) -->\n'
-        '<div class="bottom-tabs">\n'
-        '<nav>\n'
-        '<a href="/" class="active"><span class="tab-icon">\U0001F3E0</span>Home</a>\n'
-        '<a href="#" data-action="search"><span class="tab-icon">\U0001F50D</span>Search</a>\n'
-        '<a href="/graph.html" data-action="graph"><span class="tab-icon">\U0001F578\uFE0F</span>Graph</a>\n'
-        '<a href="#" data-action="sidebar"><span class="tab-icon">\u2630</span>Menu</a>\n'
+        '<div class="bottom-tabs" style="display:none;position:fixed;bottom:0;left:0;right:0;'
+        'background:var(--surface-1);border-top:1px solid var(--hairline);z-index:50;">\n'
+        '<nav style="display:flex;justify-content:space-around;padding:6px 0;">\n'
+        '<a href="/" style="font-size:11px;text-align:center;color:var(--ink-muted);text-decoration:none;">'
+        '<span style="display:block;font-size:16px;">\U0001F3E0</span>Home</a>\n'
+        '<a href="#" data-action="search" style="font-size:11px;text-align:center;color:var(--ink-muted);text-decoration:none;">'
+        '<span style="display:block;font-size:16px;">\U0001F50D</span>Search</a>\n'
+        '<a href="/graph.html" style="font-size:11px;text-align:center;color:var(--ink-muted);text-decoration:none;">'
+        '<span style="display:block;font-size:16px;">\U0001F578\uFE0F</span>Graph</a>\n'
+        '<a href="#" data-action="sidebar" style="font-size:11px;text-align:center;color:var(--ink-muted);text-decoration:none;">'
+        '<span style="display:block;font-size:16px;">\u2630</span>Menu</a>\n'
         '</nav>\n'
         '</div>\n'
         '<script src="https://cdn.jsdelivr.net/gh/highlightjs/'
@@ -106,8 +150,8 @@ def page_foot() -> str:
 # ===========================================================================
 
 
-def _topbar(active: str = "") -> str:
-    """Generate the 48px sticky top bar."""
+def _topbar(active: str = "", color_options: list = None) -> str:
+    """Generate the 48px sticky top bar matching preview."""
     links = [
         ("Home", "/", "home"),
         ("Categories", "/categories/", "categories"),
@@ -116,29 +160,46 @@ def _topbar(active: str = "") -> str:
     ]
     nav_items = []
     for label, href, key in links:
-        cls = ' class="active"' if key == active else ""
-        nav_items.append(f'<a href="{href}"{cls}>{escape(label)}</a>')
+        cls = " topbar__link--active" if key == active else ""
+        nav_items.append(
+            f'<a href="{href}" class="topbar__link{cls}">{escape(label)}</a>'
+        )
+
+    # Theme color selector
+    options_html = ""
+    if color_options:
+        for val, display in color_options:
+            sym = "\u25C6" if val != "vodafone" else "\u25CF"
+            options_html += f'<option value="{escape(val)}">{sym} {escape(display)}</option>\n'
+    else:
+        options_html = (
+            '<option value="emerald-dark">\u25C6 Emerald</option>\n'
+            '<option value="vodafone">\u25CF Vodafone</option>\n'
+        )
 
     return (
         '<header class="topbar">\n'
-        '<button class="sidebar-toggle" aria-label="Toggle sidebar">\u2630</button>\n'
-        '<a href="/" class="topbar-brand">'
-        '<span class="brand-icon">\u25C6</span> LLMWiki</a>\n'
-        f'<nav class="topbar-nav">{"".join(nav_items)}</nav>\n'
-        '<div class="topbar-actions">\n'
-        '<button class="search-trigger" aria-label="Search">'
-        '\U0001F50D Search\u2026 <kbd>\u2318K</kbd></button>\n'
-        '<button class="graph-toggle" aria-label="Toggle graph panel">\U0001F578\uFE0F</button>\n'
-        '<button class="theme-toggle" aria-label="Toggle theme">\U0001F319</button>\n'
+        '<div class="topbar__brand">\n'
+        '<span class="topbar__brand-icon">\u25C6</span>\n'
+        '<span>LLMWiki</span>\n'
         '</div>\n'
+        f'<nav class="topbar__nav">{"".join(nav_items)}</nav>\n'
+        '<div class="topbar__spacer"></div>\n'
+        '<div class="topbar__search">\n'
+        '<kbd>\u2318K</kbd>\n'
+        '<span>Search\u2026</span>\n'
+        '</div>\n'
+        f'<select class="theme-select" id="theme-select">\n{options_html}</select>\n'
+        '<button class="topbar__btn graph-toggle" title="Graph toggle">\u2B21</button>\n'
+        '<button class="topbar__btn" id="theme-toggle" title="Toggle dark/light mode">\u25D0</button>\n'
         '</header>\n'
     )
 
 
 # Keep backward-compatible name
-def nav_bar(active: str = "") -> str:
+def nav_bar(active: str = "", color_options: list = None) -> str:
     """Generate navigation bar (alias for _topbar)."""
-    return _topbar(active)
+    return _topbar(active, color_options)
 
 
 # ===========================================================================
@@ -150,50 +211,55 @@ def render_sidebar(categories: dict, current_category: str = "") -> str:
     """Generate left sidebar with collapsible category tree."""
     parts = [
         '<aside class="sidebar">\n',
-        '<div class="sidebar-search">\U0001F50D Search pages\u2026</div>\n',
+        '<div class="sidebar__section">\n',
+        '<div class="sidebar__heading">Navigation</div>\n',
+        '<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
+        '<span>Dashboard</span></a>\n',
+        '<a href="/graph.html" class="sidebar__item"><span class="sidebar__item-icon">\u25C8</span>'
+        '<span>Full Graph</span></a>\n',
+        '</div>\n',
+        '<div class="sidebar__section">\n',
+        '<div class="sidebar__heading">Categories</div>\n',
     ]
 
     sorted_cats = sorted(categories.items(), key=lambda x: x[0].lower())
     for cat_name, cat_pages in sorted_cats:
-        count = len(cat_pages) if isinstance(cat_pages, list) else cat_pages.get("count", 0)
+        count = len(cat_pages) if isinstance(cat_pages, list) else (
+            cat_pages.get("count", 0) if isinstance(cat_pages, dict) else 0
+        )
         display = escape(_format_category_display(cat_name))
         cat_url = cat_name.lower()
         is_active = cat_name.lower() == current_category.lower() if current_category else False
-        collapsed_cls = "" if is_active else " collapsed"
+        active_cls = " sidebar__item--active" if is_active else ""
 
-        parts.append(f'<div class="sidebar-section{collapsed_cls}">\n')
         parts.append(
-            f'<div class="sidebar-section-header">'
+            f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item{active_cls}" '
+            f'data-href="/categories/{escape(cat_url)}/">'
+            f'<span class="sidebar__item-icon">\u25B8</span>'
             f'<span>{display}</span>'
-            f'<span class="count">{count}</span>'
-            f'</div>\n'
+            f'<span class="sidebar__item-count">{count}</span></a>\n'
         )
-        parts.append('<ul class="sidebar-tree">\n')
 
-        # Show individual pages if available
-        page_list = cat_pages if isinstance(cat_pages, list) else []
-        for p in page_list[:15]:
-            p_title = escape(p.get("title", "?")[:30])
-            p_url = escape(p.get("url", f"/categories/{cat_url}/"))
-            parts.append(
-                f'<li><a class="sidebar-tree-item" href="{p_url}" '
-                f'data-href="{p_url}">{p_title}</a></li>\n'
-            )
-        if len(page_list) > 15:
-            parts.append(
-                f'<li><a class="sidebar-tree-item" '
-                f'href="/categories/{escape(cat_url)}/">'
-                f'\u2026 {len(page_list) - 15} more</a></li>\n'
-            )
-        if not page_list:
-            parts.append(
-                f'<li><a class="sidebar-tree-item" '
-                f'href="/categories/{escape(cat_url)}/">'
-                f'View all ({count})</a></li>\n'
-            )
-        parts.append('</ul>\n</div>\n')
+        # Show nested items for active category
+        if is_active and isinstance(cat_pages, list):
+            parts.append('<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n')
+            for p in cat_pages[:10]:
+                p_title = escape(p.get("title", "?")[:30])
+                p_url = escape(p.get("url", "#"))
+                parts.append(
+                    f'<li><a class="sidebar__item" href="{p_url}" data-href="{p_url}">'
+                    f'<span class="sidebar__item-icon">\u00B7</span>'
+                    f'<span>{p_title}</span></a></li>\n'
+                )
+            if len(cat_pages) > 10:
+                parts.append(
+                    f'<li><a class="sidebar__item" href="/categories/{escape(cat_url)}/">'
+                    f'<span class="sidebar__item-icon">\u2026</span>'
+                    f'<span>{len(cat_pages) - 10} more</span></a></li>\n'
+                )
+            parts.append('</ul>\n</div>\n')
 
-    parts.append('</aside>\n')
+    parts.append('</div>\n</aside>\n')
     return "".join(parts)
 
 
@@ -203,15 +269,31 @@ def render_sidebar(categories: dict, current_category: str = "") -> str:
 
 
 def render_graph_panel(page_id: str = "") -> str:
-    """Generate right mini-graph panel placeholder."""
+    """Generate right mini-graph panel matching preview."""
     return (
-        '<aside class="graph-panel">\n'
-        '<div class="graph-panel-header">'
-        '<span>Local Graph</span>'
-        '<a href="/graph.html">Open full \u2192</a>'
+        '<div class="graph-panel">\n'
+        '<div class="graph-panel__header">\n'
+        '<span class="graph-panel__title">Local Graph</span>\n'
+        '<a href="/graph.html" class="graph-panel__expand">Expand \u2192</a>\n'
         '</div>\n'
-        f'<div class="graph-panel-canvas" id="mini-graph" data-page="{escape(page_id)}"></div>\n'
-        '</aside>\n'
+        '<div class="graph-panel__canvas">\n'
+        '<div class="graph-panel__fade-top"></div>\n'
+        '<div class="graph-panel__fade-bottom"></div>\n'
+        f'<div id="mini-graph" data-page="{escape(page_id)}"></div>\n'
+        '</div>\n'
+        '<div class="graph-panel__legend">\n'
+        '<div class="graph-panel__legend-item"><span class="graph-panel__legend-dot" '
+        'style="background:var(--node-java)"></span><span>Java</span></div>\n'
+        '<div class="graph-panel__legend-item"><span class="graph-panel__legend-dot" '
+        'style="background:var(--node-xml)"></span><span>XML</span></div>\n'
+        '<div class="graph-panel__legend-item"><span class="graph-panel__legend-dot" '
+        'style="background:var(--node-beanshell)"></span><span>BSH</span></div>\n'
+        '<div class="graph-panel__legend-item"><span class="graph-panel__legend-dot" '
+        'style="background:var(--node-config)"></span><span>Config</span></div>\n'
+        '<div class="graph-panel__legend-item"><span class="graph-panel__legend-dot" '
+        'style="background:var(--node-tokens)"></span><span>Token</span></div>\n'
+        '</div>\n'
+        '</div>\n'
     )
 
 
@@ -227,13 +309,9 @@ def breadcrumbs(crumbs: List[Tuple[str, str]]) -> str:
     parts = []
     for label, href in crumbs[:-1]:
         parts.append(f'<a href="{escape(href)}">{escape(label)}</a>')
-        parts.append('<span class="sep">\u203a</span>')
-    parts.append(f'<span class="current">{escape(crumbs[-1][0])}</span>')
-    return (
-        f'<nav class="breadcrumbs" aria-label="Breadcrumb">'
-        f'{"".join(parts)}'
-        f'</nav>\n'
-    )
+        parts.append('<span class="breadcrumbs__sep">\u203a</span>')
+    parts.append(f'<span>{escape(crumbs[-1][0])}</span>')
+    return f'<div class="breadcrumbs">{"".join(parts)}</div>\n'
 
 
 # ===========================================================================
@@ -259,107 +337,149 @@ def render_dashboard(
     recent_changes: list,
     categories: dict,
     top_pages: list,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
 ) -> str:
-    """Render the dashboard home page with three-panel layout."""
+    """Render the dashboard home page with three-panel shell layout."""
     parts = [
-        page_head("Home", "Knowledge base dashboard"),
-        '<div class="app-layout">\n',
-        _topbar("home"),
+        page_head("Home", "Knowledge base dashboard",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("home", color_options),
         render_sidebar(categories),
+        '<main class="main">\n',
     ]
 
-    # Main content
-    parts.append('<main class="main-content">\n<div class="content-wrapper">\n')
-
-    # Stats row
+    # Stats strip
     total_pages = stats.get("total_pages", 0)
     total_edges = stats.get("total_edges", 0)
     total_clusters = stats.get("total_clusters", 0)
-    parts.append('<div class="stats-row">\n')
-    for value, label in [
-        (total_pages, "Pages"),
-        (total_edges, "Cross-refs"),
-        (total_clusters, "Clusters"),
-    ]:
+    parts.append('<div class="stats-strip">\n')
+    items = [
+        (total_pages, "pages", True),
+        (total_edges, "cross-refs", False),
+        (total_clusters, "clusters", False),
+    ]
+    for i, (value, label, accent) in enumerate(items):
+        if i > 0:
+            parts.append('<div class="stats-strip__sep"></div>\n')
+        val_cls = " stats-strip__value--accent" if accent else ""
         parts.append(
-            f'<div class="stat-card">'
-            f'<span class="stat-value">{value:,}</span>'
-            f'<span class="stat-label">{label}</span>'
+            f'<div class="stats-strip__item">'
+            f'<span class="stats-strip__value{val_cls}">{value:,}</span>'
+            f'<span class="stats-strip__label">{label}</span>'
             f'</div>\n'
         )
     parts.append('</div>\n')
 
-    # Recent changes
+    # Recent changes feed
     if recent_changes:
-        parts.append('<h2 class="section-heading">Recent Changes</h2>\n')
-        parts.append('<ul class="changes-feed">\n')
+        parts.append('<div class="section">\n')
+        parts.append(
+            '<div class="section__header">'
+            '<h2 class="section__title">Recent Changes</h2>'
+            f'<span class="section__count">{len(recent_changes)} entries</span>'
+            '</div>\n'
+        )
+        parts.append('<div class="feed">\n')
         for change in recent_changes[:10]:
-            ctype = change.get("type", "")
-            title = escape(change.get("title", "Unknown"))
-            url = escape(change.get("url", "#"))
+            c_title = escape(change.get("title", "Unknown"))
+            c_url = escape(change.get("url", "#"))
+            c_type = change.get("type", "config")
+            badge_cls = _TYPE_BADGE_MAP.get(c_type.split("/")[0].lower(), "config") if c_type else "config"
+            badge_label = _BADGE_LABELS.get(badge_cls, badge_cls.upper())
+            is_new = change.get("is_new", False)
+            dot_cls = "feed__badge--new" if is_new else "feed__badge--updated"
+            c_time = escape(change.get("time_ago", ""))
             parts.append(
-                f'<li><span class="change-badge {escape(ctype)}">{escape(ctype)}</span> '
-                f'<a href="{url}">{title}</a></li>\n'
+                f'<a href="{c_url}" class="feed__item">'
+                f'<span class="feed__badge {dot_cls}"></span>'
+                f'<span class="feed__title">{c_title}</span>'
+                f'<span class="feed__type feed__type--{badge_cls}">{badge_label}</span>'
+                f'<span class="feed__meta">{c_time}</span>'
+                f'</a>\n'
             )
-        parts.append('</ul>\n')
+        parts.append('</div>\n</div>\n')
 
-    # Category cards (top 20)
+    # Category cards grid
     if categories:
         total_cat_count = len(categories)
         sorted_cats = sorted(
             categories.items(),
             key=lambda item: (
                 len(item[1]) if isinstance(item[1], list)
-                else item[1].get("count", 0)
+                else (item[1].get("count", 0) if isinstance(item[1], dict) else 0)
             ),
             reverse=True,
         )
-        display_limit = 20
-        shown_cats = sorted_cats[:display_limit]
 
-        parts.append('<h2 class="section-heading">Categories</h2>\n')
-        parts.append('<div class="card-grid">\n')
-        for cat_name, cat_data in shown_cats:
-            count = len(cat_data) if isinstance(cat_data, list) else cat_data.get("count", 0)
+        parts.append('<div class="section">\n')
+        parts.append(
+            '<div class="section__header">'
+            '<h2 class="section__title">Categories</h2>'
+            f'<span class="section__count">{total_cat_count} active</span>'
+            '</div>\n'
+        )
+        parts.append('<div class="cards-grid">\n')
+        for cat_name, cat_data in sorted_cats[:20]:
+            count = len(cat_data) if isinstance(cat_data, list) else (
+                cat_data.get("count", 0) if isinstance(cat_data, dict) else 0
+            )
             display = escape(_format_category_display(cat_name))
             cat_url = escape(cat_name.lower())
+            base = cat_name.split("/")[0].lower()
+            badge_type = _TYPE_BADGE_MAP.get(base, "config")
+            # Map badge type to CSS node color variable
+            color_map = {
+                "java": "var(--node-java)", "xml": "var(--node-xml)",
+                "beanshell": "var(--node-beanshell)", "config": "var(--node-config)",
+                "docs": "var(--node-docs)", "tokens": "var(--node-tokens)",
+            }
+            icon_color = color_map.get(badge_type, "var(--accent)")
             parts.append(
                 f'<a href="/categories/{cat_url}/" class="card">'
-                f'<h3>{display}</h3>'
-                f'<span class="card-meta">{count} pages</span></a>\n'
+                f'<div class="card__header">'
+                f'<span class="card__icon" style="background:{icon_color}"></span>'
+                f'<span class="card__title">{display}</span>'
+                f'<span class="card__count">{count}</span>'
+                f'</div></a>\n'
             )
-        parts.append('</div>\n')
-        if total_cat_count > display_limit:
-            parts.append(
-                f'<p class="view-all-link">'
-                f'<a href="/categories/">View all {total_cat_count} categories \u2192</a>'
-                f'</p>\n'
-            )
+        parts.append('</div>\n</div>\n')
 
-    # Most connected pages (top 10) with importance bars
+    # Most connected pages
     if top_pages:
-        parts.append('<h2 class="section-heading">Most Connected</h2>\n')
-        parts.append('<ul class="connected-list">\n')
+        parts.append('<div class="section">\n')
+        parts.append(
+            '<div class="section__header">'
+            '<h2 class="section__title">Top Connected Pages</h2>'
+            '<span class="section__count">by cross-ref density</span>'
+            '</div>\n'
+        )
+        parts.append('<div class="connected-list">\n')
+        max_refs = top_pages[0].get("in_degree", 1) if top_pages else 1
         for idx, tp in enumerate(top_pages[:10], 1):
             title = escape(tp.get("title", "?"))
             url = escape(tp.get("url", "#"))
             refs = tp.get("in_degree", 0)
-            # Importance bar width relative to max
-            max_refs = top_pages[0].get("in_degree", 1) if top_pages else 1
             pct = int((refs / max(max_refs, 1)) * 100)
             parts.append(
-                f'<li>'
-                f'<span class="rank">{idx}</span>'
-                f'<a class="page-link" href="{url}">{title}</a>'
-                f'<span class="imp-bar-wrap"><span class="imp-bar-fill" style="width:{pct}%"></span></span>'
-                f'<span class="ref-count">{refs}</span>'
-                f'</li>\n'
+                f'<a href="{url}" class="connected__item">'
+                f'<span class="connected__rank">{idx}</span>'
+                f'<div class="connected__info">'
+                f'<div class="connected__name">{title}</div>'
+                f'<div class="connected__refs">Referenced by {refs} pages</div>'
+                f'</div>'
+                f'<div class="connected__bar"><div class="connected__bar-fill" style="width:{pct}%"></div></div>'
+                f'</a>\n'
             )
-        parts.append('</ul>\n')
+        parts.append('</div>\n</div>\n')
 
-    parts.append('</div>\n</main>\n')
+    parts.append('</main>\n')
     parts.append(render_graph_panel())
-    parts.append('</div>\n')  # close .app-layout
+    parts.append('</div>\n')  # close .shell
     parts.append(page_foot())
     return "".join(parts)
 
@@ -369,37 +489,45 @@ def render_dashboard(
 # ===========================================================================
 
 
-def render_category_index(category: str, pages: list) -> str:
+def render_category_index(
+    category: str, pages: list,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
+) -> str:
     """Render a category index page with filter bar and sortable table."""
     display_name = escape(_format_category_display(category))
     cat_url = category.lower()
-    cat_summary = {}
-    # Build minimal sidebar data
-    cat_summary[category] = pages
+    cat_summary = {category: pages}
 
     parts = [
-        page_head(display_name, f"All {display_name} pages"),
-        '<div class="app-layout">\n',
-        _topbar("categories"),
+        page_head(display_name, f"All {display_name} pages",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("categories", color_options),
         render_sidebar(cat_summary, category),
-        '<main class="main-content">\n<div class="content-wrapper">\n',
+        '<main class="main">\n',
         breadcrumbs([
             ("Home", "/"),
             ("Categories", "/categories/"),
             (display_name, f"/categories/{escape(cat_url)}/"),
         ]),
-        f'<h1 class="page-title">{display_name}</h1>\n',
-        f'<p class="page-count">{len(pages)} pages</p>\n',
-        '<div class="filter-bar">'
-        '<input type="text" placeholder="Filter pages\u2026" '
-        'class="filter-input" autocomplete="off">'
-        '</div>\n',
-        '<table class="pages-table">\n',
+        f'<div class="filter-bar">\n'
+        f'<span class="filter-bar__icon">\u2315</span>\n'
+        f'<input class="filter-bar__input" type="text" '
+        f'placeholder="Filter {display_name.lower()} by name, tag, or description...">\n'
+        f'<span class="filter-bar__count">{len(pages)} items</span>\n'
+        f'</div>\n',
+        '<div class="table-wrap">\n<table>\n',
         '<thead><tr>'
-        '<th>Title</th>'
-        '<th>Tags</th>'
-        '<th>Importance</th>'
+        '<th>Name <span class="sort-icon">\u25BE</span></th>'
         '<th>Type</th>'
+        '<th>Tags</th>'
+        '<th>Refs <span class="sort-icon">\u25BE</span></th>'
+        '<th>Importance</th>'
+        '<th>Modified</th>'
         '</tr></thead>\n',
         '<tbody>\n',
     ]
@@ -416,21 +544,26 @@ def render_category_index(category: str, pages: list) -> str:
         imp_pct = int(imp * 100)
         title = escape(p.get("title", "?"))
         url = escape(p.get("url", "#"))
-        ptype = escape(p.get("category", "")[:20])
+        ptype = p.get("category", "")
+        badge_html = _type_badge(ptype)
+        refs = p.get("in_degree", 0)
         data_tags = escape(" ".join(tags))
         parts.append(
             f'<tr data-tags="{data_tags}">'
-            f'<td><a href="{url}">{title}</a></td>'
+            f'<td class="td-accent"><a href="{url}">{title}</a></td>'
+            f'<td>{badge_html}</td>'
             f'<td>{tags_html}</td>'
-            f'<td><div class="imp-bar"><div class="imp-bar-fill" style="width:{imp_pct}%"></div></div></td>'
-            f'<td><span class="type-badge">{ptype}</span></td>'
+            f'<td class="td-mono">{refs}</td>'
+            f'<td><div class="connected__bar" style="width:60px">'
+            f'<div class="connected__bar-fill" style="width:{imp_pct}%"></div></div></td>'
+            f'<td class="td-muted"></td>'
             f'</tr>\n'
         )
 
-    parts.append('</tbody></table>\n')
-    parts.append('</div>\n</main>\n')
+    parts.append('</tbody></table>\n</div>\n')
+    parts.append('</main>\n')
     parts.append(render_graph_panel())
-    parts.append('</div>\n')  # close .app-layout
+    parts.append('</div>\n')  # close .shell
     parts.append(page_foot())
     return "".join(parts)
 
@@ -440,8 +573,14 @@ def render_category_index(category: str, pages: list) -> str:
 # ===========================================================================
 
 
-def render_page_detail(page: dict, backlinks: list) -> str:
-    """Render a page detail view with metadata, body, refs, and backlinks."""
+def render_page_detail(
+    page: dict, backlinks: list,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
+) -> str:
+    """Render a page detail view with metadata, body, collapsible refs & backlinks."""
     title = escape(page.get("title", "Untitled"))
     cat = page.get("category", "")
     cat_display = escape(_format_category_display(cat)) if cat else "Uncategorized"
@@ -450,62 +589,68 @@ def render_page_detail(page: dict, backlinks: list) -> str:
     slug = page_id.split("/")[-1] if "/" in page_id else page_id
 
     parts = [
-        page_head(title, f"Detail page for {title}"),
-        '<div class="app-layout">\n',
-        _topbar(),
-        # Minimal sidebar for detail pages
+        page_head(title, f"Detail page for {title}",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("", color_options),
         '<aside class="sidebar">\n'
-        '<div class="sidebar-search">\U0001F50D Search pages\u2026</div>\n'
-        f'<div class="sidebar-section">\n'
-        f'<div class="sidebar-section-header"><span>{cat_display}</span></div>\n'
-        f'<ul class="sidebar-tree">\n'
-        f'<li><a class="sidebar-tree-item active" href="#">{title[:30]}</a></li>\n'
+        '<div class="sidebar__section">\n'
+        '<div class="sidebar__heading">Navigation</div>\n'
+        f'<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
+        f'<span>Dashboard</span></a>\n'
+        f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item">'
+        f'<span class="sidebar__item-icon">\u25B8</span>'
+        f'<span>{cat_display}</span></a>\n'
+        f'<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n'
+        f'<li class="sidebar__item sidebar__item--active">'
+        f'<span class="sidebar__item-icon">\u00B7</span>'
+        f'<span>{title[:30]}</span></li>\n'
         f'</ul>\n</div>\n'
+        '</div>\n'
         '</aside>\n',
-        '<main class="main-content">\n<div class="content-wrapper">\n',
+        '<main class="main">\n',
         breadcrumbs([
             ("Home", "/"),
             ("Categories", "/categories/"),
             (cat_display, f"/categories/{escape(cat_url)}/"),
             (title, "#"),
         ]),
-        '<article class="page-detail">\n',
+        '<div class="page-detail">\n',
     ]
 
     # Metadata bar
-    parts.append('<div class="meta-bar">\n')
-    parts.append(
-        f'<span class="meta-item">'
-        f'<span class="meta-label">Type</span>'
-        f'<span class="type-badge">{escape(cat)}</span></span>\n'
-    )
+    parts.append('<div class="page-meta">\n')
+    badge_html = _type_badge(cat)
+    parts.append(badge_html)
+    parts.append('<span class="page-meta__sep"></span>\n')
+
     lang = page.get("language", "")
     if lang:
         parts.append(
-            f'<span class="meta-item">'
-            f'<span class="meta-label">Language</span> {escape(lang)}</span>\n'
+            f'<span class="page-meta__item"><strong>Language:</strong> {escape(lang)}</span>\n'
+            '<span class="page-meta__sep"></span>\n'
         )
-    tags = page.get("tags", [])
-    if tags:
-        tags_html = " ".join(
-            f'<span class="tag">{escape(t)}</span>' for t in tags
-        )
-        parts.append(
-            f'<span class="meta-item">'
-            f'<span class="meta-label">Tags</span> {tags_html}</span>\n'
-        )
+
     imp = page.get("importance", 0)
     parts.append(
-        f'<span class="meta-item">'
-        f'<span class="meta-label">Importance</span> {imp:.2f}</span>\n'
+        f'<span class="page-meta__item"><strong>Importance:</strong> {imp:.2f}</span>\n'
     )
+
     source = page.get("source_path", "")
     if source:
         parts.append(
-            f'<span class="meta-item">'
-            f'<span class="meta-label">Source</span> '
+            f'<span class="page-meta__sep"></span>\n'
+            f'<span class="page-meta__item"><strong>Source:</strong> '
             f'<code>{escape(source)}</code></span>\n'
         )
+
+    tags = page.get("tags", [])
+    if tags:
+        parts.append('<span class="page-meta__sep"></span>\n')
+        for t in tags:
+            parts.append(f'<span class="tag">{escape(t)}</span>\n')
+
     parts.append('</div>\n')
 
     # Body — markdown to HTML
@@ -513,40 +658,120 @@ def render_page_detail(page: dict, backlinks: list) -> str:
     if body:
         parts.append(f'<div class="page-body">{md_to_html(body)}</div>\n')
 
-    # Cross-references (outbound)
+    # Cross-references (outbound) — collapsible, grouped by type
     refs = page.get("references", [])
-    if refs:
-        parts.append('<section class="cross-refs">\n<h2>References \u2192</h2>\n<ul>\n')
-        for r in refs:
-            ref_str = str(r)
-            parts.append(
-                f'<li><span class="ref-arrow">\u2192</span> {escape(ref_str)}</li>\n'
-            )
-        parts.append('</ul>\n</section>\n')
+    if refs or backlinks:
+        ref_count = len(refs)
+        bl_count = len(backlinks)
+        parts.append(
+            f'<div class="ref-summary" style="margin-top:var(--sp-6);padding-top:var(--sp-5);'
+            f'border-top:1px solid var(--hairline);">\n'
+            f'<span class="ref-summary__stat">{ref_count}</span> outbound\n'
+            f'<span class="ref-summary__sep">\u00B7</span>\n'
+            f'<span class="ref-summary__stat">{bl_count}</span> inbound\n'
+            f'</div>\n'
+        )
 
-    # Backlinks (inbound)
+    if refs:
+        open_attr = " open" if len(refs) <= 8 else ""
+        parts.append(
+            f'<details class="ref-section"{open_attr}>\n'
+            f'<summary>Cross References '
+            f'<span style="margin-left:auto;font-size:11px;font-family:var(--font-mono);'
+            f'color:var(--accent);">\u2192 {len(refs)} outgoing</span></summary>\n'
+            f'<div class="ref-section__body">\n'
+        )
+        # Group refs by type if they're dicts, otherwise list them flat
+        if refs and isinstance(refs[0], dict):
+            ref_groups: dict[str, list] = {}
+            for r in refs:
+                rtype = r.get("type", "other")
+                ref_groups.setdefault(rtype, []).append(r)
+            for rtype, ritems in ref_groups.items():
+                badge = _type_badge(rtype)
+                group_open = " open" if len(ritems) <= 5 else ""
+                parts.append(
+                    f'<details class="ref-group"{group_open}>\n'
+                    f'<summary>{badge} {escape(_format_category_display(rtype))} '
+                    f'<span class="ref-group__count">{len(ritems)}</span></summary>\n'
+                    f'<div class="ref-group__body">\n'
+                )
+                for ri in ritems:
+                    ri_name = escape(ri.get("title", ri.get("id", str(ri))))
+                    ri_url = escape(ri.get("url", "#"))
+                    parts.append(
+                        f'<a href="{ri_url}" class="ref-link">'
+                        f'<span class="ref-link__arrow">\u2192</span>'
+                        f'<span class="ref-link__name">{ri_name}</span></a>\n'
+                    )
+                parts.append('</div>\n</details>\n')
+        else:
+            # Flat list (refs are strings)
+            parts.append('<div class="ref-group__body">\n')
+            for r in refs:
+                ref_str = escape(str(r))
+                parts.append(
+                    f'<div class="ref-link">'
+                    f'<span class="ref-link__arrow">\u2192</span>'
+                    f'<span class="ref-link__name">{ref_str}</span></div>\n'
+                )
+            parts.append('</div>\n')
+
+        parts.append('</div>\n</details>\n')
+
+    # Backlinks (inbound) — collapsible, grouped by category
     if backlinks:
-        parts.append('<section class="backlinks">\n<h2>Referenced By \u2190</h2>\n<ul>\n')
+        open_attr = " open" if len(backlinks) <= 5 else ""
+        parts.append(
+            f'<details class="ref-section" style="margin-top:0;border-top:none;'
+            f'padding:var(--sp-5);background:var(--surface-1);'
+            f'border:1px solid var(--hairline);border-radius:var(--radius);"{open_attr}>\n'
+            f'<summary><span style="color:var(--accent)">\u2190</span> Backlinks '
+            f'<span style="margin-left:auto;font-size:11px;font-family:var(--font-mono);'
+            f'color:var(--accent);">\u2190 {len(backlinks)} inbound</span></summary>\n'
+            f'<div class="ref-section__body">\n'
+        )
+
+        # Group backlinks by their category/type
+        bl_groups: dict[str, list] = {}
         for bl in backlinks:
-            bl_title = escape(bl.get("title", "?"))
-            bl_url = escape(bl.get("url", "#"))
+            bl_cat = bl.get("category", bl.get("type", "Other"))
+            bl_groups.setdefault(bl_cat, []).append(bl)
+
+        for bl_cat, bl_items in bl_groups.items():
+            badge = _type_badge(bl_cat)
+            cat_display_bl = escape(_format_category_display(bl_cat))
+            group_open = " open" if len(bl_items) <= 5 else ""
             parts.append(
-                f'<li><span class="ref-arrow">\u2190</span> '
-                f'<a href="{bl_url}">{bl_title}</a></li>\n'
+                f'<details class="ref-group"{group_open}>\n'
+                f'<summary>\u2190 Referenced by {badge} {cat_display_bl} '
+                f'<span class="ref-group__count">{len(bl_items)}</span></summary>\n'
+                f'<div class="ref-group__body">\n'
             )
-        parts.append('</ul>\n</section>\n')
+            for bli in bl_items:
+                bl_title = escape(bli.get("title", "?"))
+                bl_url = escape(bli.get("url", "#"))
+                parts.append(
+                    f'<a href="{bl_url}" class="ref-link">'
+                    f'<span class="ref-link__arrow">\u2190</span>'
+                    f'<span class="ref-link__name">{bl_title}</span></a>\n'
+                )
+            parts.append('</div>\n</details>\n')
+
+        parts.append('</div>\n</details>\n')
 
     # JSON sibling link
     if slug:
         parts.append(
-            f'<a class="json-link" href="{escape(slug)}.json">'
-            f'\U0001F4CB JSON (for AI agents)</a>\n'
+            f'<div class="json-link">'
+            f'Structured data: <a href="{escape(slug)}.json">{escape(slug)}.json</a>'
+            f'</div>\n'
         )
 
-    parts.append('</article>\n')
-    parts.append('</div>\n</main>\n')
+    parts.append('</div>\n')  # close .page-detail
+    parts.append('</main>\n')
     parts.append(render_graph_panel(page_id))
-    parts.append('</div>\n')  # close .app-layout
+    parts.append('</div>\n')  # close .shell
     parts.append(page_foot())
     return "".join(parts)
 
@@ -556,44 +781,7 @@ def render_page_detail(page: dict, backlinks: list) -> str:
 # ===========================================================================
 
 
-def render_graph_page(graph: dict) -> str:
-    """Render interactive knowledge graph page using vis-network CDN."""
-    nodes_json = json.dumps(graph.get("nodes", []))
-    edges_json = json.dumps(graph.get("edges", []))
-    stats = graph.get("stats", {})
-
-    parts = [
-        page_head("Knowledge Graph", "Interactive knowledge graph visualization"),
-        '<div class="app-layout">\n',
-        _topbar("graph"),
-        '<aside class="sidebar">\n'
-        '<div class="sidebar-search">\U0001F50D Search pages\u2026</div>\n'
-        '</aside>\n',
-        '<main class="main-content" style="padding:0;">\n',
-        '<div style="padding:var(--sp-4);display:flex;align-items:center;gap:var(--sp-4);">'
-        '<h1 style="font-size:20px;font-weight:600;margin:0;">Knowledge Graph</h1>'
-        f'<span class="text-muted" style="font-size:12px;">'
-        f'{stats.get("total_pages", 0)} nodes \u00b7 '
-        f'{stats.get("total_edges", 0)} edges \u00b7 '
-        f'{stats.get("total_clusters", 0)} clusters</span>'
-        '</div>\n',
-        '<div id="graph-container" style="width:100%;height:calc(100vh - '
-        'var(--topbar-height) - 60px);background:var(--canvas);"></div>\n',
-        '<script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/'
-        'umd/vis-network.min.js" crossorigin="anonymous"></script>\n',
-        '<script>\n(function(){\n"use strict";\n',
-        'var rawNodes = ', nodes_json, ';\n',
-        'var rawEdges = ', edges_json, ';\n',
-        _GRAPH_SCRIPT,
-        '})();\n</script>\n',
-        '</main>\n',
-        '</div>\n',  # close .app-layout
-        page_foot(),
-    ]
-    return "".join(parts)
-
-
-_GRAPH_SCRIPT = """\
+_GRAPH_INIT_SCRIPT = """\
 var TYPE_COLORS = {
   "rule": "#f59e0b", "workflow": "#6366f1", "application": "#10b981",
   "task": "#f97316", "report": "#ef4444", "custom": "#8b5cf6",
@@ -658,31 +846,138 @@ if (container && typeof vis !== "undefined") {
 """
 
 
+def render_graph_page(
+    graph: dict,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
+) -> str:
+    """Render interactive knowledge graph page with force/neural toggle."""
+    nodes_json = json.dumps(graph.get("nodes", []))
+    edges_json = json.dumps(graph.get("edges", []))
+    stats = graph.get("stats", {})
+
+    n_nodes = stats.get("total_pages", 0)
+    n_edges = stats.get("total_edges", 0)
+    n_clusters = stats.get("total_clusters", 0)
+
+    # Legend items
+    legend_types = [
+        ("Java", "var(--node-java)"),
+        ("XML/Workflow", "var(--node-xml)"),
+        ("BeanShell", "var(--node-beanshell)"),
+        ("Config", "var(--node-config)"),
+        ("Token", "var(--node-tokens)"),
+        ("Docs", "var(--node-docs)"),
+    ]
+    legend_html = ""
+    for lbl, color in legend_types:
+        legend_html += (
+            f'<div class="graph-full__legend-item">'
+            f'<span class="graph-full__legend-dot" style="background:{color}"></span>'
+            f'<span>{lbl}</span></div>\n'
+        )
+
+    parts = [
+        page_head("Knowledge Graph", "Interactive knowledge graph visualization",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("graph", color_options),
+        '<aside class="sidebar">\n'
+        '<div class="sidebar__section">\n'
+        '<div class="sidebar__heading">Navigation</div>\n'
+        '<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
+        '<span>Dashboard</span></a>\n'
+        '<a href="/graph.html" class="sidebar__item sidebar__item--active">'
+        '<span class="sidebar__item-icon">\u25C8</span>'
+        '<span>Full Graph</span></a>\n'
+        '</div>\n'
+        '</aside>\n',
+        '<main class="main">\n',
+        '<div class="section">\n'
+        '<div class="section__header">'
+        '<h2 class="section__title">Knowledge Graph</h2>'
+        '<span class="section__count">full topology</span>'
+        '</div>\n'
+        '</div>\n',
+        # Graph view toggle
+        '<div class="graph-view-toggle">\n'
+        '<button class="active" data-gview="force">Force-Directed</button>\n'
+        '<button data-gview="neural">Neural Network</button>\n'
+        '</div>\n',
+        # Force-directed graph container
+        '<div id="graph-force" class="graph-full">\n'
+        '<div class="graph-full__header">\n'
+        '<div class="graph-full__stats">\n'
+        f'<span><span class="graph-full__stat-val">{n_nodes:,}</span> nodes</span>\n'
+        f'<span><span class="graph-full__stat-val">{n_edges:,}</span> edges</span>\n'
+        f'<span><span class="graph-full__stat-val">{n_clusters}</span> clusters</span>\n'
+        '</div>\n'
+        '</div>\n'
+        '<div class="graph-full__canvas">\n'
+        '<div id="graph-container" style="width:100%;height:500px;"></div>\n'
+        '</div>\n'
+        f'<div class="graph-full__legend">\n{legend_html}</div>\n'
+        '</div>\n',
+        # Neural graph container (hidden initially)
+        '<div id="graph-neural" class="neural-graph" style="display:none"></div>\n',
+        # vis-network CDN
+        '<script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/'
+        'umd/vis-network.min.js" crossorigin="anonymous"></script>\n',
+        # Graph init script
+        '<script>\n(function(){\n"use strict";\n',
+        'var rawNodes = ', nodes_json, ';\n',
+        'var rawEdges = ', edges_json, ';\n',
+        _GRAPH_INIT_SCRIPT,
+        '})();\n</script>\n',
+        '</main>\n',
+        '</div>\n',  # close .shell
+        page_foot(),
+    ]
+    return "".join(parts)
+
+
 # ===========================================================================
 # CHANGELOG
 # ===========================================================================
 
 
-def render_changelog_page(history: list) -> str:
+def render_changelog_page(
+    history: list,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
+) -> str:
     """Render changelog page from build history entries."""
     parts = [
-        page_head("Changelog", "Build history and changes"),
-        '<div class="app-layout">\n',
-        _topbar("changelog"),
+        page_head("Changelog", "Build history and changes",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("changelog", color_options),
         '<aside class="sidebar">\n'
-        '<div class="sidebar-search">\U0001F50D Search pages\u2026</div>\n'
+        '<div class="sidebar__section">\n'
+        '<div class="sidebar__heading">Navigation</div>\n'
+        '<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
+        '<span>Dashboard</span></a>\n'
+        '</div>\n'
         '</aside>\n',
-        '<main class="main-content">\n<div class="content-wrapper">\n',
-        '<h1 class="page-title">Changelog</h1>\n',
+        '<main class="main">\n',
+        '<div class="section">\n'
+        '<div class="section__header"><h2 class="section__title">Changelog</h2></div>\n'
+        '</div>\n',
     ]
 
     if not history:
         parts.append(
-            '<p class="text-muted">No build history yet. '
+            '<p style="color:var(--ink-subtle);font-size:13px;">No build history yet. '
             'Run <code>llmwiki all</code> to generate the first build.</p>\n'
         )
     else:
-        parts.append('<table class="pages-table">\n')
+        parts.append('<div class="table-wrap">\n<table>\n')
         parts.append(
             '<thead><tr><th>Build Date</th><th>Pages</th>'
             '<th>Categories</th><th>Cross-refs</th><th>Clusters</th>'
@@ -700,17 +995,17 @@ def render_changelog_page(history: list) -> str:
             parts.append(
                 f'<tr>'
                 f'<td>{escape(display_ts)}</td>'
-                f'<td>{entry.get("total_pages", 0)}</td>'
-                f'<td>{entry.get("total_categories", 0)}</td>'
-                f'<td>{entry.get("total_edges", 0)}</td>'
-                f'<td>{entry.get("total_clusters", 0)}</td>'
+                f'<td class="td-mono">{entry.get("total_pages", 0)}</td>'
+                f'<td class="td-mono">{entry.get("total_categories", 0)}</td>'
+                f'<td class="td-mono">{entry.get("total_edges", 0)}</td>'
+                f'<td class="td-mono">{entry.get("total_clusters", 0)}</td>'
                 f'</tr>\n'
             )
-        parts.append('</tbody></table>\n')
+        parts.append('</tbody></table>\n</div>\n')
 
-    parts.append('</div>\n</main>\n')
+    parts.append('</main>\n')
     parts.append(render_graph_panel())
-    parts.append('</div>\n')  # close .app-layout
+    parts.append('</div>\n')  # close .shell
     parts.append(page_foot())
     return "".join(parts)
 
@@ -720,22 +1015,33 @@ def render_changelog_page(history: list) -> str:
 # ===========================================================================
 
 
-def render_categories_index(categories: dict) -> str:
+def render_categories_index(
+    categories: dict,
+    *,
+    themes_json: str = "",
+    theme_labels_json: str = "",
+    color_options: list = None,
+) -> str:
     """Render the /categories/ index page listing all categories."""
     total = len(categories)
     parts = [
-        page_head("All Categories", f"Browse all {total} categories"),
-        '<div class="app-layout">\n',
-        _topbar("categories"),
+        page_head("All Categories", f"Browse all {total} categories",
+                  themes_json=themes_json, theme_labels_json=theme_labels_json,
+                  color_options=color_options),
+        '<div class="shell">\n',
+        _topbar("categories", color_options),
         render_sidebar(categories),
-        '<main class="main-content">\n<div class="content-wrapper">\n',
+        '<main class="main">\n',
         breadcrumbs([("Home", "/"), ("Categories", "#")]),
-        f'<h1 class="page-title">All Categories ({total})</h1>\n',
-        '<div class="filter-bar">'
-        '<input type="text" placeholder="Filter categories\u2026" '
-        'class="filter-input" autocomplete="off">'
+        f'<div class="section">\n'
+        f'<div class="section__header"><h2 class="section__title">All Categories ({total})</h2></div>\n'
+        f'</div>\n',
+        '<div class="filter-bar">\n'
+        '<span class="filter-bar__icon">\u2315</span>\n'
+        '<input class="filter-bar__input" type="text" placeholder="Filter categories\u2026">\n'
+        f'<span class="filter-bar__count">{total} items</span>\n'
         '</div>\n',
-        '<div class="card-grid">\n',
+        '<div class="cards-grid">\n',
     ]
 
     sorted_cats = sorted(
@@ -747,16 +1053,27 @@ def render_categories_index(categories: dict) -> str:
         count = len(cat_pages) if isinstance(cat_pages, list) else 0
         display = escape(_format_category_display(cat_name))
         cat_url = escape(cat_name.lower())
+        base = cat_name.split("/")[0].lower()
+        badge_type = _TYPE_BADGE_MAP.get(base, "config")
+        color_map = {
+            "java": "var(--node-java)", "xml": "var(--node-xml)",
+            "beanshell": "var(--node-beanshell)", "config": "var(--node-config)",
+            "docs": "var(--node-docs)", "tokens": "var(--node-tokens)",
+        }
+        icon_color = color_map.get(badge_type, "var(--accent)")
         parts.append(
             f'<a href="/categories/{cat_url}/" '
             f'class="card" data-tags="{escape(cat_name.lower())}">'
-            f'<h3>{display}</h3>'
-            f'<span class="card-meta">{count} pages</span></a>\n'
+            f'<div class="card__header">'
+            f'<span class="card__icon" style="background:{icon_color}"></span>'
+            f'<span class="card__title">{display}</span>'
+            f'<span class="card__count">{count}</span>'
+            f'</div></a>\n'
         )
 
     parts.append('</div>\n')
-    parts.append('</div>\n</main>\n')
+    parts.append('</main>\n')
     parts.append(render_graph_panel())
-    parts.append('</div>\n')  # close .app-layout
+    parts.append('</div>\n')  # close .shell
     parts.append(page_foot())
     return "".join(parts)
