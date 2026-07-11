@@ -21,13 +21,15 @@ def lint_wiki(raw_dir: Path, graph: dict) -> list[dict]:
             })
 
     # Check for broken references
-    valid_ids = {n["id"] for n in graph.get("nodes", [])}
+    valid_ids = {n["id"].lower() for n in graph.get("nodes", [])}
+    valid_titles = {n.get("title", "").lower() for n in graph.get("nodes", [])}
+    valid_targets = valid_ids | valid_titles
     if raw_dir.exists():
         for md_file in raw_dir.rglob("*.md"):
             content = md_file.read_text(encoding="utf-8", errors="replace")
             wikilinks = re.findall(r"\[\[([^\]|]+)", content)
             for link in wikilinks:
-                if link.lower() not in {v.lower() for v in valid_ids}:
+                if link.lower() not in valid_targets:
                     issues.append({
                         "rule": "broken_link",
                         "severity": "error",

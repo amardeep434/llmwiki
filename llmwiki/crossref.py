@@ -7,6 +7,13 @@ import re
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 _JAVA_IMPORT_RE = re.compile(r"import\s+([\w.]+);")
 _CLASS_REF_RE = re.compile(r"(?:new\s+|extends\s+|implements\s+)([\w.]+)")
+# SailPoint API class references (common in docs and PDF content)
+_SP_CLASS_RE = re.compile(r"\b(sailpoint\.\w+\.\w+)\b", re.IGNORECASE)
+# Connector/application names commonly referenced in XML config
+_CONNECTOR_RE = re.compile(
+    r"\b(Active Directory|LDAP|JDBC|Delimited File|SAP|ServiceNow|SCIM|REST|SOAP)\b",
+    re.IGNORECASE,
+)
 
 
 def extract_refs_from_body(body: str) -> list[str]:
@@ -15,6 +22,10 @@ def extract_refs_from_body(body: str) -> list[str]:
     refs.update(_WIKILINK_RE.findall(body))
     refs.update(_JAVA_IMPORT_RE.findall(body))
     refs.update(_CLASS_REF_RE.findall(body))
+    # SailPoint package references
+    refs.update(_SP_CLASS_RE.findall(body))
+    # Connector name references
+    refs.update(match.lower().replace(" ", "-") for match in _CONNECTOR_RE.findall(body))
     # Filter out common Java stdlib
     refs = {r for r in refs if not r.startswith(("java.", "javax.", "org.w3c.", "org.xml."))}
     return sorted(refs)

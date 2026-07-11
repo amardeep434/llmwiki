@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from pathlib import Path
 
 from llmwiki.adapters import _ensure_all_loaded, _REGISTRY
 from llmwiki.state import BuildState
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_RE = re.compile(r"%%([A-Z_][A-Z0-9_]+)%%")
 
 
 def ingest_source(
@@ -51,9 +54,12 @@ def ingest_source(
                 counts["unchanged"] += 1
                 continue
 
-            # Extract pages
+            # Extract pages — enable BeanShell extraction for XML adapter
+            adapter_config = dict(config)
+            if adapter.name == "xml":
+                adapter_config.setdefault("extract_beanshell", True)
             try:
-                pages = adapter.extract(fpath, config)
+                pages = adapter.extract(fpath, adapter_config)
             except Exception as e:
                 logger.warning("Failed to process %s: %s", fpath, e)
                 counts["errors"] += 1
@@ -166,4 +172,51 @@ def ingest_all(
         totals["total_unchanged"] += result["unchanged"]
         totals["total_errors"] += result.get("errors", 0)
 
+    # Generate token registry from all raw pages
+    _generate_token_registry(raw_dir)
+
     return totals
+
+
+def _generate_token_registry(raw_dir: Path) -> None:
+    """Scan all raw pages for %%TOKEN%% patterns and create a token registry."""
+    tokens: dict[str, list[str]] = {}  # token_name -> [source_files]
+
+    for md_file in raw_dir.rglob("*.md"):
+        try:
+            content = md_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        found = _TOKEN_RE.findall(content)
+        if found:
+            # Use the filename stem as page title
+            page_title = md_file.stem.replace("-", " ").replace("_", " ")
+            for token in found:
+                tokens.setdefault(token, []).append(page_title)
+
+    if not tokens:
+        return
+
+    # Create token registry page
+    body_lines = [f"# Token Registry\n\n{len(tokens)} environment tokens found.\n"]
+    for token_name in sorted(tokens.keys()):
+        sources = tokens[token_name]
+        body_lines.append(f"## %%{token_name}%%\n")
+        body_lines.append(f"Used in {len(sources)} files:\n")
+        for src in sorted(set(sources))[:10]:
+            body_lines.append(f"- [[{src}]]")
+        body_lines.append("")
+
+    from llmwiki.adapters.base import WikiPage
+    page = WikiPage(
+        slug="tokens/registry",
+        title="Token Registry",
+        category="tokens",
+        source_path="(generated)",
+        body="\n".join(body_lines),
+        tags=["tokens", "configuration"],
+    )
+    page.compute_hash()
+    out_path = raw_dir / "tokens" / "registry.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(page.to_markdown(), encoding="utf-8")

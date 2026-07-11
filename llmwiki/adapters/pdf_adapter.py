@@ -1,4 +1,4 @@
-"""PDF adapter — converts PDFs to markdown via pymupdf4llm."""
+"""PDF adapter — converts PDFs to markdown via pymupdf4llm with pymupdf fallback."""
 
 from __future__ import annotations
 
@@ -10,12 +10,33 @@ from llmwiki.adapters.base import BaseAdapter, WikiPage
 
 
 def _convert_pdf(path: Path) -> str:
-    """Convert PDF to markdown using pymupdf4llm."""
+    """Convert PDF to markdown. Tries pymupdf4llm first, falls back to pymupdf raw extraction."""
+    # Attempt 1: pymupdf4llm (best quality if it works)
     try:
         import pymupdf4llm
-        return pymupdf4llm.to_markdown(str(path))
-    except ImportError:
-        return f"*PDF conversion requires pymupdf4llm. Install with: `pip install pymupdf4llm`*\n\nFile: {path.name}"
+        result = pymupdf4llm.to_markdown(str(path))
+        if result and len(result.strip()) > 100:
+            return result
+    except Exception:
+        pass
+
+    # Attempt 2: Raw pymupdf text extraction with markdown formatting
+    try:
+        import pymupdf
+        doc = pymupdf.open(str(path))
+        sections = []
+        for i, page in enumerate(doc):
+            text = page.get_text("text")
+            if text.strip():
+                if i == 0:
+                    lines = text.strip().splitlines()
+                    if lines:
+                        sections.append(f"# {lines[0].strip()}\n")
+                        sections.append("\n".join(lines[1:]))
+                else:
+                    sections.append(f"\n---\n*Page {i+1}*\n\n{text.strip()}")
+        doc.close()
+        return "\n\n".join(sections) if sections else f"*Empty PDF: {path.name}*"
     except Exception as e:
         return f"*Error converting PDF: {e}*\n\nFile: {path.name}"
 
