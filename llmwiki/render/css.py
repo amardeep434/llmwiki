@@ -120,8 +120,9 @@ a:hover { color: var(--accent-hover); }
 .sidebar__ct-tier1 { font-weight: 500; position: relative; padding-right: 28px; }
 .sidebar__ct-tier1 .sidebar__item-icon { font-size: 15px; width: 20px; text-align: center; }
 .sidebar__ct-group > summary.sidebar__ct-tier1::after {
-  content: "\25B8"; font-size: 10px; color: var(--ink-faint);
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  content: ""; width: 0; height: 0;
+  border-left: 4px solid var(--ink-faint); border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
   transition: transform 200ms ease;
 }
 .sidebar__ct-group[open] > .sidebar__ct-tier1::after { transform: translateY(-50%) rotate(90deg); }
