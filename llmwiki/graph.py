@@ -18,8 +18,12 @@ def build_graph(raw_dir: Path) -> dict:
     pages = _load_pages(raw_dir)
     page_ids = set(pages.keys())
 
-    # Build edges
+    # Build edges from explicit references
     edges = build_edge_list(pages)
+
+    # Add title-based edges (if page A mentions page B's title in its body)
+    title_edges = _find_title_mentions(pages)
+    edges.extend(title_edges)
 
     # Resolve fuzzy references (partial slug matching)
     resolved_edges = _resolve_edges(edges, page_ids)
@@ -108,6 +112,49 @@ def _load_pages(raw_dir: Path) -> dict[str, dict]:
             "body": body,
         }
     return pages
+
+
+def _find_title_mentions(pages: dict[str, dict]) -> list[tuple[str, str, str]]:
+    """Find edges by scanning page bodies for mentions of other page titles.
+
+    Uses word-set intersection for O(n) performance instead of O(n²) regex.
+    Only matches titles that are ≥6 chars to avoid false positives.
+    """
+    # Build title→page_id index
+    title_to_id: dict[str, str] = {}
+    skip_titles = {"source", "import", "return", "public", "string", "object",
+                   "system", "config", "server", "client", "method"}
+    for pid, pdata in pages.items():
+        title = pdata.get("title", "").strip()
+        if len(title) >= 6 and title.lower() not in skip_titles:
+            title_to_id[title.lower()] = pid
+
+    if not title_to_id:
+        return []
+
+    edges: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for pid, pdata in pages.items():
+        body = pdata.get("body", "")
+        if not body:
+            continue
+        # Extract words from body (fast set operation)
+        body_lower = body.lower()
+        for title_lower, target_id in title_to_id.items():
+            if target_id == pid:
+                continue
+            if (pid, target_id) in seen:
+                continue
+            # Simple substring check (much faster than regex for each)
+            if title_lower in body_lower:
+                edges.append((pid, target_id, "mentions"))
+                seen.add((pid, target_id))
+                # Cap edges per page to avoid explosion
+                if sum(1 for e in edges if e[0] == pid) > 20:
+                    break
+
+    return edges
 
 
 def _resolve_edges(

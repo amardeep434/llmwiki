@@ -640,7 +640,9 @@ function renderMiniGraph(container, graph, pageId) {
   var localEdges = edges.filter(function(e) { return neighborSet.has(e.from) && neighborSet.has(e.to); });
 
   if (localNodes.length < 2) {
-    container.innerHTML = '<p class="text-muted" style="padding:8px;font-size:12px;">No connections</p>';
+    container.innerHTML = '<p class="text-muted" style="padding:12px;font-size:12px;text-align:center;">'
+      + 'No cross-references detected for this page yet.<br>'
+      + '<span style="font-size:11px;opacity:0.7;">Cross-refs are auto-detected from imports, references, and wikilinks.</span></p>';
     return;
   }
 
