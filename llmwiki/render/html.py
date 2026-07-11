@@ -178,40 +178,17 @@ def _render_code_blocks(html_body: str) -> str:
 
 
 def _add_method_anchors(html_body: str) -> str:
-    """Make method list items clickable and add anchor IDs in code blocks.
+    """Make method list items clickable links to method declarations.
 
-    - Converts ``<code>methodName()</code>`` in list items to anchor links
-    - Adds ``<span id="method-name">`` wrappers around method declarations
-      inside ``<pre><code>`` blocks so links can jump to them.
+    Only converts the list items to links with data-target attributes.
+    The actual anchor ``<span id>`` elements are inserted by JS after
+    highlight.js has finished processing the code blocks.
     """
-    # Collect method names from the Methods/Functions section list items
     method_re = re.compile(r'<li><code>(\w+)\(\)</code></li>')
     methods = method_re.findall(html_body)
     if not methods:
         return html_body
 
-    # 1. First add anchors inside <pre><code>...</code></pre> blocks
-    def _add_anchors_in_pre(match: re.Match) -> str:
-        pre_content = match.group(0)
-        for m in methods:
-            # Match method declarations, not calls:
-            # Declarations are preceded by whitespace/type keywords, not by '.'
-            pre_content = re.sub(
-                rf'(?<!\.)(?<!\w)({re.escape(m)})(\s*\()',
-                rf'<span id="method-{m}" class="method-anchor">\1</span>\2',
-                pre_content,
-                count=1,
-            )
-        return pre_content
-
-    html_body = re.sub(
-        r'<pre><code[^>]*>.*?</code></pre>',
-        _add_anchors_in_pre,
-        html_body,
-        flags=re.DOTALL,
-    )
-
-    # 2. Then convert list items to anchor links with scroll handler
     for m in methods:
         html_body = html_body.replace(
             f'<li><code>{m}()</code></li>',

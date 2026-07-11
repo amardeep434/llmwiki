@@ -1120,36 +1120,86 @@ function initPaletteInput() {
   });
 }
 
-/* ===== Method Anchor Scroll (handles nested overflow containers) ===== */
+/* ===== Method Anchor Scroll ===== */
 function initMethodLinks() {
   var mainEl = document.querySelector(".main");
-  if (!mainEl) return;
   var links = document.querySelectorAll(".method-link[data-target]");
-  for (var i = 0; i < links.length; i++) {
-    (function(link) {
-      link.addEventListener("click", function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var targetId = link.getAttribute("data-target");
-        var target = document.getElementById(targetId);
-        if (!target) return;
-        /* Calculate offset within .main scroll container */
-        var targetRect = target.getBoundingClientRect();
-        var mainRect = mainEl.getBoundingClientRect();
-        var scrollOffset = targetRect.top - mainRect.top + mainEl.scrollTop - (mainEl.clientHeight / 3);
-        mainEl.scrollTo({ top: scrollOffset, behavior: "smooth" });
-        /* Flash highlight */
-        target.style.background = "rgba(16,185,129,0.4)";
-        target.style.padding = "1px 6px";
-        target.style.borderRadius = "3px";
-        target.style.transition = "background 0.5s";
-        setTimeout(function() {
-          target.style.background = "";
-          target.style.padding = "";
-        }, 2500);
-      });
-    })(links[i]);
-  }
+  if (!mainEl || !links.length) return;
+
+  /* Collect method names from data-target attributes */
+  var methods = [];
+  links.forEach(function(link) {
+    var tid = link.getAttribute("data-target");
+    if (tid && tid.indexOf("method-") === 0) {
+      methods.push(tid.substring(7)); /* strip "method-" prefix */
+    }
+  });
+
+  /* Insert anchor IDs into code blocks AFTER hljs has processed them.
+     hljs wraps function declarations in <span class="hljs-title function_">,
+     so we find those directly — no heuristics needed. Works for all languages. */
+  var codeBlocks = document.querySelectorAll("pre code");
+  codeBlocks.forEach(function(codeEl) {
+    /* Find all hljs function title spans */
+    var funcSpans = codeEl.querySelectorAll(".hljs-title.function_");
+    funcSpans.forEach(function(span) {
+      var fname = span.textContent.trim();
+      if (methods.indexOf(fname) === -1) return;
+      if (document.getElementById("method-" + fname)) return;
+      span.id = "method-" + fname;
+      span.classList.add("method-anchor");
+    });
+
+    /* Fallback for languages where hljs doesn't use function_ class:
+       look for method name in text nodes NOT preceded by '.' */
+    methods.forEach(function(name) {
+      if (document.getElementById("method-" + name)) return;
+      var walker = document.createTreeWalker(codeEl, NodeFilter.SHOW_TEXT);
+      var node;
+      while (node = walker.nextNode()) {
+        var text = node.textContent;
+        var pos = text.indexOf(name);
+        if (pos === -1) continue;
+        var cBefore = pos > 0 ? text.charAt(pos - 1) : "";
+        if (cBefore === "." || /\w/.test(cBefore)) continue;
+        /* Check char after is ( or end-of-node (params in next sibling) */
+        var cAfter = text.charAt(pos + name.length);
+        var nextSib = node.nextSibling;
+        var nextText = nextSib ? (nextSib.textContent || "") : "";
+        if (cAfter !== "(" && !(cAfter === "" && nextText.charAt(0) === "(")) continue;
+        var span = document.createElement("span");
+        span.id = "method-" + name;
+        span.className = "method-anchor";
+        span.textContent = name;
+        var afterText = node.splitText(pos);
+        afterText.textContent = afterText.textContent.substring(name.length);
+        node.parentNode.insertBefore(span, afterText);
+        break;
+      }
+    });
+  });
+
+  /* Attach click handlers */
+  links.forEach(function(link) {
+    link.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var targetId = link.getAttribute("data-target");
+      var target = document.getElementById(targetId);
+      if (!target) return;
+      var targetRect = target.getBoundingClientRect();
+      var mainRect = mainEl.getBoundingClientRect();
+      var scrollOffset = targetRect.top - mainRect.top + mainEl.scrollTop - (mainEl.clientHeight / 3);
+      mainEl.scrollTo({ top: scrollOffset, behavior: "smooth" });
+      target.style.background = "rgba(16,185,129,0.4)";
+      target.style.padding = "1px 6px";
+      target.style.borderRadius = "3px";
+      setTimeout(function() {
+        target.style.background = "";
+        target.style.padding = "";
+      }, 2500);
+    });
+  });
 }
 
 /* ===== Init ===== */
