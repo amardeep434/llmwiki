@@ -27,8 +27,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # ingest
     p_ingest = sub.add_parser("ingest", help="Run adapters to populate raw/")
-    p_ingest.add_argument("--adapter", help="Run only a specific adapter")
+    p_ingest.add_argument("--adapter", help="Run only a specific adapter (e.g., pdf, xml, source-code)")
+    p_ingest.add_argument("--force", action="store_true", help="Force re-ingest all files (ignore state cache)")
     p_ingest.add_argument("--config", default="llmwiki.json", help="Config file path")
+
+    # clean
+    p_clean = sub.add_parser("clean", help="Clean generated data and reset state")
+    p_clean.add_argument("--raw", action="store_true", help="Clean raw/ only (forces full re-ingest)")
+    p_clean.add_argument("--site", action="store_true", help="Clean site/ only (forces rebuild)")
+    p_clean.add_argument("--all", action="store_true", help="Clean everything (raw + wiki + site + state)")
+    p_clean.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # build
     p_build = sub.add_parser("build", help="Build wiki/ and site/ from raw/")
@@ -90,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         "all": _cmd_all,
         "stats": _cmd_stats,
         "themes": _cmd_themes,
+        "clean": _cmd_clean,
     }
 
     handler = dispatch.get(args.command)
@@ -159,6 +168,12 @@ def _cmd_ingest(args) -> int:
     raw_dir = cfg_path.parent / "raw"
     raw_dir.mkdir(exist_ok=True)
     state_path = cfg_path.parent / ".llmwiki-state.json"
+
+    # --force: delete state to force re-processing of all files
+    if getattr(args, 'force', False):
+        if state_path.exists():
+            state_path.unlink()
+            print("🔄 Force mode: cleared state cache — all files will be re-processed")
 
     print("📥 Ingesting sources...")
     result = ingest_all(config, raw_dir, state_path)
@@ -324,4 +339,61 @@ def _cmd_themes(args) -> int:
         print(f"  {t['name']:20s} — {t['description']}")
     print(f"\nUsage: llmwiki build --theme <name>")
     print(f"   Or: set \"theme\" in llmwiki.json under \"build\"")
+    return 0
+
+
+def _cmd_clean(args) -> int:
+    """Clean generated data and reset state."""
+    import shutil
+
+    cfg_path = Path(args.config).resolve()
+    root = cfg_path.parent
+    state_path = root / ".llmwiki-state.json"
+
+    clean_all = getattr(args, 'all', False)
+    clean_raw = getattr(args, 'raw', False) or clean_all
+    clean_site = getattr(args, 'site', False) or clean_all
+
+    # If no specific flag, default to cleaning site + state (most common need)
+    if not clean_raw and not clean_site and not clean_all:
+        clean_site = True
+
+    cleaned = []
+
+    if clean_raw:
+        raw_dir = root / "raw"
+        if raw_dir.exists():
+            shutil.rmtree(raw_dir)
+            raw_dir.mkdir()
+            cleaned.append("raw/")
+
+    if clean_site:
+        site_dir = root / "site"
+        if site_dir.exists():
+            shutil.rmtree(site_dir)
+            site_dir.mkdir()
+            cleaned.append("site/")
+
+    if clean_all:
+        wiki_dir = root / "wiki"
+        if wiki_dir.exists():
+            shutil.rmtree(wiki_dir)
+            wiki_dir.mkdir()
+            cleaned.append("wiki/")
+
+    # Always reset state when cleaning raw or all
+    if clean_raw or clean_all:
+        if state_path.exists():
+            state_path.unlink()
+            cleaned.append(".llmwiki-state.json")
+
+    if cleaned:
+        print(f"🧹 Cleaned: {', '.join(cleaned)}")
+        if clean_raw:
+            print("   Run `llmwiki ingest` to re-process all sources.")
+        elif clean_site:
+            print("   Run `llmwiki build` to regenerate the site.")
+    else:
+        print("Nothing to clean.")
+
     return 0
