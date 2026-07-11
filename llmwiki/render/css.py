@@ -108,7 +108,7 @@ a:hover { color: var(--accent-hover); }
 .sidebar__item--active { background: var(--accent-subtle); color: var(--accent); }
 .sidebar__item-icon { font-size: 11px; color: var(--ink-faint); width: 12px; text-align: center; flex-shrink: 0; }
 .sidebar__item--active .sidebar__item-icon { color: var(--accent); }
-.sidebar__item-count { margin-left: auto; font-size: 12px; color: var(--ink-faint); opacity: 0.7; font-family: var(--font-sans); unicode-bidi: isolate; direction: ltr; }
+.sidebar__item-count { margin-left: auto; font-size: 11px; color: var(--ink-subtle); font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.02em; }
 .sidebar__item--active .sidebar__item-count { color: var(--accent); }
 .sidebar__nested-section { background: color-mix(in srgb, var(--surface-0) 50%, var(--canvas) 50%); border-radius: var(--radius-xs); margin: var(--sp-2); padding: var(--sp-2) 0; }
 
