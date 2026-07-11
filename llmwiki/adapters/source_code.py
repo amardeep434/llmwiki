@@ -32,6 +32,55 @@ _PY_DOCSTRING_RE = re.compile(r'"""(.*?)"""', re.DOTALL)
 _LINE_COMMENT_RE = re.compile(r"^\s*(?://|#|--)\s*(.*)", re.MULTILINE)
 _BLOCK_COMMENT_RE = re.compile(r"/\*(.*?)\*/", re.DOTALL)
 
+# Generic method/function patterns for all languages
+_GENERIC_FUNC_PATTERNS: dict[str, re.Pattern] = {
+    "javascript": re.compile(
+        r"(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
+        r"|(?:^|\n)\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>",
+        re.MULTILINE,
+    ),
+    "typescript": re.compile(
+        r"(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
+        r"|(?:^|\n)\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>",
+        re.MULTILINE,
+    ),
+    "go": re.compile(r"^func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(", re.MULTILINE),
+    "rust": re.compile(r"(?:pub\s+)?(?:async\s+)?fn\s+(\w+)", re.MULTILINE),
+    "csharp": re.compile(
+        r"(?:public|private|protected|internal)\s+(?:static\s+)?(?:async\s+)?"
+        r"[\w<>\[\], ]+\s+(\w+)\s*\(",
+        re.MULTILINE,
+    ),
+    "ruby": re.compile(r"^\s*def\s+(?:self\.)?(\w+[?!=]?)", re.MULTILINE),
+    "kotlin": re.compile(r"(?:fun|suspend\s+fun)\s+(\w+)\s*[\(<]", re.MULTILINE),
+    "swift": re.compile(r"func\s+(\w+)\s*[\(<]", re.MULTILINE),
+    "scala": re.compile(r"def\s+(\w+)\s*[\[(]", re.MULTILINE),
+    "php": re.compile(r"(?:public|private|protected)?\s*(?:static\s+)?function\s+(\w+)\s*\(", re.MULTILINE),
+    "bash": re.compile(r"^\s*(?:function\s+)?(\w+)\s*\(\s*\)", re.MULTILINE),
+    "lua": re.compile(r"(?:local\s+)?function\s+(?:[\w.]+[.:])?(\w+)\s*\(", re.MULTILINE),
+    "perl": re.compile(r"^sub\s+(\w+)", re.MULTILINE),
+    "elixir": re.compile(r"(?:def|defp)\s+(\w+)", re.MULTILINE),
+    "haskell": re.compile(r"^(\w+)\s+::", re.MULTILINE),
+    "dart": re.compile(r"(?:Future|void|int|String|bool|double|dynamic|var)\s+(\w+)\s*\(", re.MULTILINE),
+    "groovy": re.compile(r"(?:def|void|int|String|boolean)\s+(\w+)\s*\(", re.MULTILINE),
+}
+# Also use Java/Python patterns for their languages
+_GENERIC_FUNC_PATTERNS["java"] = _JAVA_METHOD_RE
+_GENERIC_FUNC_PATTERNS["python"] = _PY_FUNC_RE
+# Generic class patterns
+_GENERIC_CLASS_PATTERNS: dict[str, re.Pattern] = {
+    "javascript": re.compile(r"class\s+(\w+)", re.MULTILINE),
+    "typescript": re.compile(r"(?:export\s+)?(?:abstract\s+)?class\s+(\w+)", re.MULTILINE),
+    "go": re.compile(r"type\s+(\w+)\s+struct", re.MULTILINE),
+    "rust": re.compile(r"(?:pub\s+)?(?:struct|enum|trait)\s+(\w+)", re.MULTILINE),
+    "csharp": re.compile(r"(?:public\s+)?(?:abstract\s+)?(?:class|interface|struct|enum)\s+(\w+)", re.MULTILINE),
+    "ruby": re.compile(r"class\s+(\w+)", re.MULTILINE),
+    "kotlin": re.compile(r"(?:data\s+)?class\s+(\w+)", re.MULTILINE),
+    "swift": re.compile(r"(?:class|struct|protocol|enum)\s+(\w+)", re.MULTILINE),
+    "scala": re.compile(r"(?:case\s+)?(?:class|object|trait)\s+(\w+)", re.MULTILINE),
+    "php": re.compile(r"class\s+(\w+)", re.MULTILINE),
+}
+
 
 @register
 class SourceCodeAdapter(BaseAdapter):
@@ -109,6 +158,7 @@ class SourceCodeAdapter(BaseAdapter):
         methods = _JAVA_METHOD_RE.findall(content)
         if methods:
             sections.append("## Methods\n\n" + "\n".join(f"- `{m}()`" for m in methods))
+            tags.extend(f"method:{m}" for m in methods[:20])
 
         if not sections:
             sections.append(f"## {title}\n\nJava source file.")
@@ -146,6 +196,7 @@ class SourceCodeAdapter(BaseAdapter):
         top_funcs = [f for f in funcs if not f.startswith("_") or f == "__init__"]
         if top_funcs:
             sections.append("## Functions\n\n" + "\n".join(f"- `{f}()`" for f in top_funcs))
+            tags.extend(f"method:{f}" for f in top_funcs[:20])
 
         if not sections:
             sections.append(f"## {title}\n\nPython source file.")
@@ -155,6 +206,7 @@ class SourceCodeAdapter(BaseAdapter):
     def _parse_generic(self, content: str, title: str, lang: str) -> tuple[str, list[str], list[str]]:
         sections = []
         tags = [lang] if lang else []
+        refs: list[str] = []
 
         comments = _LINE_COMMENT_RE.findall(content[:2000])
         block_comments = _BLOCK_COMMENT_RE.findall(content[:2000])
@@ -165,10 +217,34 @@ class SourceCodeAdapter(BaseAdapter):
         elif comments:
             sections.append(f"## Overview\n\n{' '.join(comments[:5])}")
 
+        # Extract classes using language-specific patterns
+        cls_re = _GENERIC_CLASS_PATTERNS.get(lang)
+        if cls_re:
+            classes = cls_re.findall(content)
+            if classes:
+                sections.append("## Classes\n\n" + "\n".join(f"- `{c}`" for c in classes))
+
+        # Extract functions/methods using language-specific patterns
+        func_re = _GENERIC_FUNC_PATTERNS.get(lang)
+        if func_re:
+            matches = func_re.findall(content)
+            # Flatten tuple groups (JS/TS patterns have multiple groups)
+            methods = []
+            for m in matches:
+                if isinstance(m, tuple):
+                    name = next((g for g in m if g), None)
+                else:
+                    name = m
+                if name and name not in methods:
+                    methods.append(name)
+            if methods:
+                sections.append("## Methods\n\n" + "\n".join(f"- `{m}()`" for m in methods))
+                tags.extend(f"method:{m}" for m in methods[:20])
+
         if not sections:
             sections.append(f"## {title}\n\nSource file ({lang or 'unknown language'}).")
 
-        return "\n\n".join(sections), [], tags
+        return "\n\n".join(sections), refs, tags
 
     def _make_slug(self, path: Path, category: str) -> str:
         safe = re.sub(r"[^a-zA-Z0-9_-]", "-", path.stem)

@@ -177,6 +177,41 @@ def _render_code_blocks(html_body: str) -> str:
     )
 
 
+def _add_method_anchors(html_body: str) -> str:
+    """Make method list items clickable and add anchor IDs in code blocks.
+
+    - Converts ``<code>methodName()</code>`` in list items to anchor links
+    - Adds ``<span id="method-name">`` wrappers around method declarations
+      in code blocks so links can jump to them.
+    """
+    # Collect method names from the Methods/Functions section list items
+    method_re = re.compile(r'<li><code>(\w+)\(\)</code></li>')
+    methods = method_re.findall(html_body)
+    if not methods:
+        return html_body
+
+    # Replace list items with anchor links
+    for m in methods:
+        html_body = html_body.replace(
+            f'<li><code>{m}()</code></li>',
+            f'<li><a href="#method-{m}" class="method-link"><code>{m}()</code></a></li>',
+        )
+
+    # Add anchor spans in code blocks for each method declaration
+    for m in methods:
+        # Match the method name in code content (first occurrence in a code block)
+        # Use a pattern that finds the method name preceded by typical declaration keywords
+        html_body = re.sub(
+            rf'(<code[^>]*>(?:(?!</code>).)*?)(\b{re.escape(m)}\b)(\s*\()',
+            rf'\1<span id="method-{m}" class="method-anchor">\2</span>\3',
+            html_body,
+            count=1,
+            flags=re.DOTALL,
+        )
+
+    return html_body
+
+
 # ===========================================================================
 # HEAD / FOOT
 # ===========================================================================
@@ -1071,6 +1106,7 @@ def render_page_detail(
         cleaned_body = _clean_javadoc(body)
         rendered_body = md_to_html(cleaned_body)
         rendered_body = _render_code_blocks(rendered_body)
+        rendered_body = _add_method_anchors(rendered_body)
         parts.append(f'<div class="page-body">{rendered_body}</div>\n')
 
     # Cross-references (outbound) — collapsible, grouped by type

@@ -253,6 +253,18 @@ tbody td.td-accent { color: var(--accent); font-weight: 500; }
 .filter-bar__icon { color: var(--ink-subtle); font-size: 13px; }
 .filter-bar__count { font-size: 11px; color: var(--ink-subtle); font-family: var(--font-mono); }
 
+/* ─── Filter Dropdown ─── */
+.filter-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; margin-top: 4px; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.3); max-height: 380px; overflow-y: auto; }
+.filter-dropdown__label { font-size: 11px; color: var(--ink-subtle); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--hairline); text-transform: uppercase; letter-spacing: 0.03em; }
+.filter-dropdown__item { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4); font-size: 13px; color: var(--ink); cursor: pointer; transition: background 100ms; text-decoration: none; }
+.filter-dropdown__item:hover { background: var(--surface-2); color: var(--ink); }
+.filter-dropdown__title { font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filter-dropdown__cat { font-size: 11px; color: var(--ink-subtle); white-space: nowrap; }
+.filter-dropdown__tags { display: flex; gap: 4px; }
+.filter-dropdown__tag { font-size: 10px; padding: 1px 5px; background: var(--surface-2); border-radius: 3px; color: var(--ink-muted); }
+.filter-dropdown__empty { padding: var(--sp-4); text-align: center; font-size: 13px; color: var(--ink-subtle); }
+.filter-dropdown__more { padding: var(--sp-2) var(--sp-4); font-size: 11px; color: var(--ink-faint); text-align: center; border-top: 1px solid var(--hairline); }
+
 /* ─── Page Detail ─── */
 .page-detail { background: var(--surface-0); border: 1px solid var(--hairline); border-radius: var(--radius); padding: var(--sp-6); max-width: 800px; }
 .page-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding-bottom: var(--sp-4); border-bottom: 1px solid var(--hairline); margin-bottom: var(--sp-5); }
@@ -306,6 +318,13 @@ tbody td.td-accent { color: var(--accent); font-weight: 500; }
 .code-block pre .cmt { color: var(--ink-faint); font-style: italic; }
 .code-block pre .fn { color: var(--node-java); }
 .code-block pre .num { color: var(--node-tokens); }
+
+/* ─── Method Links & Anchors ─── */
+.method-link { color: var(--accent); text-decoration: none; transition: color 150ms; }
+.method-link:hover { color: var(--accent-hover); text-decoration: underline; }
+.method-link code { color: inherit; }
+.method-anchor { scroll-margin-top: 80px; }
+.method-anchor:target { background: color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 2px; padding: 0 2px; }
 
 /* ─── Badges ─── */
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: 11px; font-weight: 500; border-radius: 3px; }

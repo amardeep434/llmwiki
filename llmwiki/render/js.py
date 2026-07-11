@@ -128,9 +128,8 @@ function closePalette() {
 }
 
 function fetchSearchIndex() {
-  fetch("../search-index.json").catch(function() {
-    return fetch("/search-index.json");
-  }).then(function(r) { return r.ok ? r.json() : fetch("/search-index.json").then(function(r2) { return r2.json(); }); })
+  fetch("/search-index.json")
+    .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
     .then(function(data) { searchIndex = data.entries || data || []; })
     .catch(function() { searchIndex = []; });
 }
@@ -411,18 +410,27 @@ function initFilterBar() {
   var input = document.querySelector(".filter-bar__input");
   if (!input) return;
   var countEl = document.querySelector(".filter-bar__count");
-  input.addEventListener("input", function() {
-    var query = input.value.toLowerCase();
+  var bar = input.closest(".filter-bar");
+
+  /* Create dropdown for global search results */
+  var dropdown = document.createElement("div");
+  dropdown.className = "filter-dropdown";
+  dropdown.style.display = "none";
+  if (bar) bar.style.position = "relative";
+  (bar || input.parentNode).appendChild(dropdown);
+
+  function updateResults(query) {
+    /* 1. Filter table rows + cards (existing behavior) */
     var rows = document.querySelectorAll("table tbody tr");
     var cards = document.querySelectorAll(".cards-grid .card");
-    var visible = 0;
+    var tableVisible = 0;
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       var text = row.textContent.toLowerCase();
       var tags = (row.getAttribute("data-tags") || "").toLowerCase();
       var show = !query || text.indexOf(query) !== -1 || tags.indexOf(query) !== -1;
       row.classList.toggle("hidden", !show);
-      if (show) visible++;
+      if (show) tableVisible++;
     }
     for (var j = 0; j < cards.length; j++) {
       var card = cards[j];
@@ -430,9 +438,53 @@ function initFilterBar() {
       var cTags = (card.getAttribute("data-tags") || "").toLowerCase();
       var cShow = !query || cText.indexOf(query) !== -1 || cTags.indexOf(query) !== -1;
       card.style.display = cShow ? "" : "none";
-      if (cShow) visible++;
+      if (cShow) tableVisible++;
     }
-    if (countEl) countEl.textContent = visible + " items";
+    if (countEl) countEl.textContent = tableVisible + " items";
+
+    /* 2. Show global search dropdown */
+    if (!query || query.length < 2) {
+      dropdown.style.display = "none";
+      return;
+    }
+    var results = filterEntries(query);
+    if (results.length === 0) {
+      dropdown.innerHTML = '<div class="filter-dropdown__empty">No pages found</div>';
+      dropdown.style.display = "block";
+      return;
+    }
+    var html = '<div class="filter-dropdown__label">All pages matching \u201c' + query + '\u201d</div>';
+    results.slice(0, 12).forEach(function(entry) {
+      var title = (entry.title || entry.id || "").replace(/</g, "&lt;");
+      var cat = (entry.category || "").replace(/</g, "&lt;");
+      var url = entry.url || "#";
+      var tags = (entry.tags || []).slice(0, 3).map(function(t) {
+        return '<span class="filter-dropdown__tag">' + t.replace(/</g, "&lt;") + '</span>';
+      }).join("");
+      html += '<a href="' + url + '" class="filter-dropdown__item">'
+        + '<span class="filter-dropdown__title">' + title + '</span>'
+        + '<span class="filter-dropdown__cat">' + cat.replace(/\//g, " \u203a ") + '</span>'
+        + (tags ? '<span class="filter-dropdown__tags">' + tags + '</span>' : '')
+        + '</a>';
+    });
+    if (results.length > 12) {
+      html += '<div class="filter-dropdown__more">' + (results.length - 12) + ' more results\u2026</div>';
+    }
+    dropdown.innerHTML = html;
+    dropdown.style.display = "block";
+  }
+
+  input.addEventListener("input", function() {
+    updateResults(input.value.toLowerCase());
+  });
+  input.addEventListener("focus", function() {
+    if (input.value.length >= 2) updateResults(input.value.toLowerCase());
+  });
+  document.addEventListener("click", function(e) {
+    if (!bar || !bar.contains(e.target)) dropdown.style.display = "none";
+  });
+  input.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") { dropdown.style.display = "none"; input.blur(); }
   });
 }
 
