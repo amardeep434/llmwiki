@@ -55,15 +55,28 @@ llmwiki init --source /path/to/your/codebase
 This will:
 1. Scan the source directory for supported file types
 2. Report which adapters detected files (e.g., "Found 42 files for adapter 'source-code'")
-3. Create `raw/`, `wiki/`, `site/` directories
-4. Generate `llmwiki.json` configuration
+3. Create `.llmwiki/raw/`, `.llmwiki/wiki/`, `.llmwiki/site/` inside your project
+4. Generate `.llmwiki/llmwiki.json` configuration
+
+**Default directory structure created:**
+
+```
+~/projects/my-app/              ← your source code
+├── .llmwiki/                   ← wiki lives here (add to .gitignore)
+│   ├── llmwiki.json            ← configuration
+│   ├── raw/                    ← extracted markdown pages
+│   ├── wiki/                   ← generated intermediate layer
+│   └── site/                   ← generated static HTML site
+├── src/                        ← your existing code
+└── ...
+```
 
 **Optional flags:**
 
 | Flag | Description |
 |------|-------------|
 | `--name` | Project name (defaults to directory name) |
-| `--output` | Where to create the project (defaults to `.`) |
+| `--output` | Where to create the wiki (defaults to `<source>/.llmwiki/`) |
 
 **Example:**
 

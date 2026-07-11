@@ -13,6 +13,7 @@ LLMWiki is a zero-config pipeline that ingests source code (30+ languages), XML,
 ```bash
 pip install -e .
 llmwiki init --source /path/to/your/project
+cd /path/to/your/project/.llmwiki
 llmwiki all
 llmwiki serve
 # Open http://127.0.0.1:8765
@@ -23,6 +24,7 @@ llmwiki serve
 ```batch
 python -m pip install -e .
 llmwiki init --source C:\path\to\your\project
+cd C:\path\to\your\project\.llmwiki
 llmwiki all
 llmwiki serve
 ```

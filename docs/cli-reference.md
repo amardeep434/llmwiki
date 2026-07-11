@@ -46,14 +46,14 @@ llmwiki init --source /home/user/my-app --name "My Application"
   Found 3 files for adapter 'markdown'
 
 ✅ Created llmwiki.json
-✅ Created raw/, wiki/, site/ directories
+✅ Created .llmwiki/raw/, .llmwiki/wiki/, .llmwiki/site/ directories
 
 Run `llmwiki ingest` to extract content, then `llmwiki build` to generate the site.
 ```
 
 **What it does:**
 1. Scans the source directory for files matching registered adapters
-2. Creates `raw/`, `wiki/`, `site/` directories
+2. Creates `.llmwiki/raw/`, `.llmwiki/wiki/`, `.llmwiki/site/` inside the source project (or at `--output` path)
 3. Writes a default `llmwiki.json` configuration file
 
 ---
