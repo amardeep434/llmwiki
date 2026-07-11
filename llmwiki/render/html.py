@@ -416,7 +416,7 @@ def render_sidebar(categories: dict, current_category: str = "",
                     sc_active = " sidebar__item--active" if current_category and sc_name.lower() == current_category.lower() else ""
                     parts.append(
                         f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2{sc_active}">'
-                        f'<span class="sidebar__item-icon">\u25B8</span>'
+                        f'<span class="sidebar__item-icon">\u00B7</span>'
                         f'<span>{sc_display}</span>'
                         f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
                     )
@@ -437,7 +437,7 @@ def render_sidebar(categories: dict, current_category: str = "",
                         sc_url = escape(sc_data.get("url", "#"))
                         parts.append(
                             f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2">'
-                            f'<span class="sidebar__item-icon">\u25B8</span>'
+                            f'<span class="sidebar__item-icon">\u00B7</span>'
                             f'<span>{sc_display}</span>'
                             f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
                         )
@@ -471,7 +471,7 @@ def render_sidebar(categories: dict, current_category: str = "",
             parts.append(
                 f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item{active_cls}" '
                 f'data-href="/categories/{escape(cat_url)}/">'
-                f'<span class="sidebar__item-icon">\u25B8</span>'
+                f'<span class="sidebar__item-icon">\u00B7</span>'
                 f'<span>{display}</span>'
                 f'<span class="sidebar__item-count">{count}</span></a>\n'
             )
@@ -913,7 +913,7 @@ def render_page_detail(
         f'<span class="sidebar__item-icon">\u25A3</span>'
         f'<span>All Pages</span></a>\n'
         f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item">'
-        f'<span class="sidebar__item-icon">\u25B8</span>'
+        f'<span class="sidebar__item-icon">\u00B7</span>'
         f'<span>{cat_display}</span></a>\n'
         f'<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n'
         f'<li class="sidebar__item sidebar__item--active">'
