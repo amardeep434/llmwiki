@@ -613,15 +613,16 @@ var fontColor = "#e4e4e7";
 var visNodes = rawNodes.map(function(n) {
   var imp = n.importance || 0;
   var size = 6 + imp * 35;
+  var cat = n.type || "uncategorized";
   return {
     id: n.id,
     label: n.title || n.id,
     size: size,
-    color: { background: typeColor(n.category), border: typeColor(n.category),
+    color: { background: typeColor(cat), border: typeColor(cat),
              highlight: { background: "#10b981", border: "#34d399" } },
     font: { color: fontColor, size: Math.max(9, size * 0.55) },
-    title: (n.title || n.id) + " (" + (n.category || "?") + ")\\nImportance: " + imp.toFixed(2),
-    _url: "/categories/" + (n.category || "uncategorized").toLowerCase() + "/" + n.id.split("/").pop() + ".html",
+    title: (n.title || n.id) + " (" + cat + ")\\nImportance: " + imp.toFixed(2),
+    _url: "/categories/" + cat.toLowerCase() + "/" + n.id.split("/").pop() + ".html",
   };
 });
 

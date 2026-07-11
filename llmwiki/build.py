@@ -60,7 +60,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     if not cross_refs_enabled:
         graph["stats"]["total_pages"] = len(pages)
 
-    # 3. Build backlink index from graph edges
+    # 3. Build page URL map (category-based, matches filesystem)
+    page_urls: dict[str, str] = {}
+    for pid, pdata in pages.items():
+        cat = (pdata.get("category", "") or "uncategorized").lower()
+        slug_file = pid.split("/")[-1] if "/" in pid else pid
+        page_urls[pid] = f"/categories/{cat}/{slug_file}.html"
+
+    # 4. Build backlink index from graph edges
     backlinks: dict[str, list[dict]] = {}
     node_map = {n["id"]: n for n in graph.get("nodes", [])}
     for edge in graph.get("edges", []):
@@ -70,16 +77,16 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         if from_node:
             backlinks.setdefault(to_id, []).append({
                 "title": from_node.get("title", from_id),
-                "url": _page_url(from_id),
+                "url": page_urls.get(from_id, "#"),
             })
 
-    # 4. Enrich pages with importance scores and cluster IDs
+    # 5. Enrich pages with importance scores, cluster IDs, and URLs
     for pid, pdata in pages.items():
         node = node_map.get(pid, {})
         pdata["importance"] = node.get("importance", 0)
         pdata["cluster_id"] = node.get("cluster_id")
         pdata["in_degree"] = node.get("in_degree", 0)
-        pdata["url"] = _page_url(pid)
+        pdata["url"] = page_urls.get(pid, "#")
 
     # 5. Write enriched pages to wiki/ (intermediate layer)
     wiki_pages_dir = wiki_dir / "pages"
@@ -133,11 +140,11 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     top_pages = sorted(
         [
             {
-                "title": n["title"],
-                "url": _page_url(n["id"]),
-                "in_degree": n["in_degree"],
+                "title": pdata.get("title", pid),
+                "url": pdata.get("url", "#"),
+                "in_degree": pdata.get("in_degree", 0),
             }
-            for n in graph.get("nodes", [])
+            for pid, pdata in pages.items()
         ],
         key=lambda x: x["in_degree"],
         reverse=True,
