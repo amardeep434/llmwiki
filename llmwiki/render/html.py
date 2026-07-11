@@ -128,6 +128,14 @@ def md_to_html(body: str) -> str:
     return _sanitize_html(md.convert(body))
 
 
+def _format_category_display(name: str) -> str:
+    """Format a category name for display.
+
+    Replaces '/' with ' › ', '-' with spaces, and title-cases.
+    """
+    return name.replace("-", " ").replace("/", " › ").title()
+
+
 def render_dashboard(
     stats: dict,
     recent_changes: list,
@@ -184,23 +192,39 @@ def render_dashboard(
             )
         parts.append('</ul></section>\n')
 
-    # Category cards
+    # Category cards — limited to top 20 by page count
     if categories:
+        total_cat_count = len(categories)
+        sorted_cats = sorted(
+            categories.items(),
+            key=lambda item: item[1].get("count", 0),
+            reverse=True,
+        )
+        display_limit = 20
+        shown_cats = sorted_cats[:display_limit]
+
         parts.append(
             '<section class="categories"><h2>Categories</h2>'
             '<div class="card-grid">\n'
         )
-        for cat_name in sorted(categories.keys()):
-            cat_data = categories[cat_name]
+        for cat_name, cat_data in shown_cats:
             count = cat_data.get("count", 0)
-            display = escape(cat_name.replace("-", " ").title())
+            display = escape(_format_category_display(cat_name))
+            cat_url = escape(cat_name.lower())
             parts.append(
-                f'<a href="/categories/{escape(cat_name)}/" '
+                f'<a href="/categories/{cat_url}/" '
                 f'class="category-card">'
                 f'<h3>{display}</h3>'
                 f'<span class="card-count">{count} pages</span></a>\n'
             )
-        parts.append('</div></section>\n')
+        parts.append('</div>\n')
+        if total_cat_count > display_limit:
+            parts.append(
+                f'<p class="view-all-link">'
+                f'<a href="/categories/">View all {total_cat_count} categories →</a>'
+                f'</p>\n'
+            )
+        parts.append('</section>\n')
 
     # Most connected pages
     if top_pages:
@@ -229,16 +253,15 @@ def render_category_index(category: str, pages: list) -> str:
         category: Category slug.
         pages: List of page dicts with title, tags, importance, url.
     """
-    display_name = escape(
-        category.replace("-", " ").replace("/", " \u203A ").title()
-    )
+    display_name = escape(_format_category_display(category))
+    cat_url = category.lower()
     parts = [
         page_head(display_name, f"All {display_name} pages"),
         nav_bar("categories"),
         breadcrumbs([
             ("Home", "/"),
             ("Categories", "/categories/"),
-            (display_name, "#"),
+            (display_name, f"/categories/{escape(cat_url)}/"),
         ]),
         '<main class="container">\n',
         f'<h1>{display_name}</h1>\n',
@@ -290,13 +313,15 @@ def render_page_detail(page: dict, backlinks: list) -> str:
     """
     title = escape(page.get("title", "Untitled"))
     cat = page.get("category", "")
+    cat_display = escape(_format_category_display(cat)) if cat else "Uncategorized"
+    cat_url = cat.lower() if cat else "uncategorized"
     parts = [
         page_head(title, f"Detail page for {title}"),
         nav_bar(),
         breadcrumbs([
             ("Home", "/"),
             ("Categories", "/categories/"),
-            (escape(cat.title()), f"/categories/{escape(cat)}/"),
+            (cat_display, f"/categories/{escape(cat_url)}/"),
             (title, "#"),
         ]),
         '<main class="container">\n',
@@ -357,6 +382,191 @@ def render_page_detail(page: dict, backlinks: list) -> str:
         parts.append('</ul></section>\n')
 
     parts.append('</article>\n')
+    parts.append('</main>\n')
+    parts.append(page_foot())
+    return "".join(parts)
+
+
+def render_graph_page(graph: dict) -> str:
+    """Render interactive knowledge graph page using vis-network CDN."""
+    nodes_json = json.dumps(graph.get("nodes", []))
+    edges_json = json.dumps(graph.get("edges", []))
+    stats = graph.get("stats", {})
+
+    parts = [
+        page_head("Knowledge Graph", "Interactive knowledge graph visualization"),
+        nav_bar("graph"),
+        '<main class="container">\n',
+        '<h1>Knowledge Graph</h1>\n',
+        f'<p class="text-muted">'
+        f'{stats.get("total_pages", 0)} nodes · '
+        f'{stats.get("total_edges", 0)} edges · '
+        f'{stats.get("total_clusters", 0)} clusters</p>\n',
+        '<div id="graph-container" style="width:100%;height:70vh;'
+        'border:1px solid var(--border);border-radius:var(--radius-lg);'
+        'background:var(--card-bg);margin-top:1rem;"></div>\n',
+        '<script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/'
+        'umd/vis-network.min.js" crossorigin="anonymous"></script>\n',
+        '<script>\n',
+        '(function(){\n',
+        '"use strict";\n',
+        'var rawNodes = ', nodes_json, ';\n',
+        'var rawEdges = ', edges_json, ';\n',
+        _GRAPH_SCRIPT,
+        '})();\n',
+        '</script>\n',
+        '</main>\n',
+        page_foot(),
+    ]
+    return "".join(parts)
+
+
+_GRAPH_SCRIPT = """\
+var CATEGORY_COLORS = {
+  "rule": "#7C3AED", "workflow": "#2563EB", "application": "#059669",
+  "task": "#D97706", "report": "#DC2626", "custom": "#6366F1",
+  "emailtemplate": "#EC4899", "connector-guides": "#14B8A6",
+  "iiq-docs": "#F59E0B", "quicklink": "#8B5CF6",
+};
+
+function catColor(cat) {
+  if (!cat) return "#6B7280";
+  var base = cat.split("/")[0].toLowerCase();
+  return CATEGORY_COLORS[base] || "#6B7280";
+}
+
+var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+var fontColor = isDark ? "#e2e8f0" : "#1a1a2e";
+
+var visNodes = rawNodes.map(function(n) {
+  var imp = n.importance || 0;
+  var size = 8 + imp * 40;
+  return {
+    id: n.id,
+    label: n.title || n.id,
+    size: size,
+    color: { background: catColor(n.category), border: catColor(n.category) },
+    font: { color: fontColor, size: Math.max(10, size * 0.6) },
+    title: (n.title || n.id) + " (" + (n.category || "?") + ")\\nImportance: " + imp.toFixed(2) + "\\nRefs: " + (n.in_degree || 0),
+    _url: "/categories/" + (n.category || n.id).toLowerCase() + "/" + n.id.split("/").pop() + ".html",
+  };
+});
+
+var visEdges = rawEdges.map(function(e, i) {
+  return { from: e.from, to: e.to, arrows: "to", color: { color: "#9ca3af", opacity: 0.4 } };
+});
+
+var container = document.getElementById("graph-container");
+if (container && typeof vis !== "undefined") {
+  var network = new vis.Network(container, {
+    nodes: new vis.DataSet(visNodes),
+    edges: new vis.DataSet(visEdges),
+  }, {
+    physics: {
+      solver: "forceAtlas2Based",
+      forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.005, springLength: 100 },
+      stabilization: { iterations: 150 },
+    },
+    interaction: { hover: true, tooltipDelay: 100 },
+    nodes: { shape: "dot", borderWidth: 2 },
+    edges: { smooth: { type: "continuous" } },
+  });
+
+  network.on("click", function(params) {
+    if (params.nodes.length > 0) {
+      var nodeId = params.nodes[0];
+      var node = visNodes.find(function(n) { return n.id === nodeId; });
+      if (node && node._url) window.location.href = node._url;
+    }
+  });
+}
+"""
+
+
+def render_changelog_page(history: list) -> str:
+    """Render changelog page from build history entries."""
+    parts = [
+        page_head("Changelog", "Build history and changes"),
+        nav_bar("changelog"),
+        '<main class="container">\n',
+        '<h1>Changelog</h1>\n',
+    ]
+
+    if not history:
+        parts.append(
+            '<p class="text-muted">No build history yet. '
+            'Run <code>llmwiki all</code> to generate the first build.</p>\n'
+        )
+    else:
+        parts.append('<table class="pages-table">\n')
+        parts.append(
+            '<thead><tr><th>Build Date</th><th>Pages</th>'
+            '<th>Categories</th><th>Cross-refs</th><th>Clusters</th>'
+            '</tr></thead>\n'
+        )
+        parts.append('<tbody>\n')
+        for entry in reversed(history):
+            ts = escape(entry.get("timestamp", "?"))
+            # Format timestamp for display
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.fromisoformat(ts)
+                display_ts = dt.strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                display_ts = ts
+            parts.append(
+                f'<tr>'
+                f'<td>{escape(display_ts)}</td>'
+                f'<td>{entry.get("total_pages", 0)}</td>'
+                f'<td>{entry.get("total_categories", 0)}</td>'
+                f'<td>{entry.get("total_edges", 0)}</td>'
+                f'<td>{entry.get("total_clusters", 0)}</td>'
+                f'</tr>\n'
+            )
+        parts.append('</tbody></table>\n')
+
+    parts.append('</main>\n')
+    parts.append(page_foot())
+    return "".join(parts)
+
+
+def render_categories_index(categories: dict) -> str:
+    """Render the /categories/ index page listing all categories.
+
+    Args:
+        categories: {category_name: [page_dicts]} mapping.
+    """
+    total = len(categories)
+    parts = [
+        page_head("All Categories", f"Browse all {total} categories"),
+        nav_bar("categories"),
+        breadcrumbs([("Home", "/"), ("Categories", "#")]),
+        '<main class="container">\n',
+        f'<h1>All Categories ({total})</h1>\n',
+        '<div class="filter-bar">'
+        '<input type="text" placeholder="Filter categories..." '
+        'class="filter-input">'
+        '</div>\n',
+        '<div class="card-grid">\n',
+    ]
+
+    sorted_cats = sorted(
+        categories.items(),
+        key=lambda item: len(item[1]),
+        reverse=True,
+    )
+    for cat_name, cat_pages in sorted_cats:
+        count = len(cat_pages)
+        display = escape(_format_category_display(cat_name))
+        cat_url = escape(cat_name.lower())
+        parts.append(
+            f'<a href="/categories/{cat_url}/" '
+            f'class="category-card" data-tags="{escape(cat_name.lower())}">'
+            f'<h3>{display}</h3>'
+            f'<span class="card-count">{count} pages</span></a>\n'
+        )
+
+    parts.append('</div>\n')
     parts.append('</main>\n')
     parts.append(page_foot())
     return "".join(parts)

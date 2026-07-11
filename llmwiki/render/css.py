@@ -999,6 +999,17 @@ kbd {
   color: var(--fg-muted);
 }
 
+.view-all-link {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.view-all-link a {
+  color: var(--accent);
+}
+
 .mt-2 {
   margin-top: 2rem;
 }

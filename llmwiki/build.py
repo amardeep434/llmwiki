@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 
@@ -10,6 +11,9 @@ from llmwiki.render.html import (
     render_dashboard,
     render_category_index,
     render_page_detail,
+    render_graph_page,
+    render_changelog_page,
+    render_categories_index,
 )
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
@@ -81,11 +85,15 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     wiki_pages_dir.mkdir(parents=True, exist_ok=True)
     wiki_categories: dict[str, list[str]] = {}
     for pid, pdata in pages.items():
+        # Default empty categories to "uncategorized"
+        cat = pdata.get("category", "") or "uncategorized"
+        pdata["category"] = cat
+
         wiki_page_path = wiki_pages_dir / f"{pid.replace('/', '_')}.md"
         fm_lines = [
             "---",
             f'title: "{pdata.get("title", "")}"',
-            f'category: {pdata.get("category", "")}',
+            f'category: {cat}',
             f'importance: {pdata.get("importance", 0)}',
             f'cluster_id: {pdata.get("cluster_id", "")}',
             f'tags: [{", ".join(pdata.get("tags", []))}]',
@@ -95,7 +103,6 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             "\n".join(fm_lines) + "\n\n" + pdata.get("body", ""),
             encoding="utf-8",
         )
-        cat = pdata.get("category", "misc")
         wiki_categories.setdefault(cat, []).append(
             f"- [{pdata.get('title', pid)}](pages/{pid.replace('/', '_')}.md)"
         )
@@ -110,7 +117,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # 6. Group pages by category
     categories: dict[str, list[dict]] = {}
     for pid, pdata in pages.items():
-        cat = pdata.get("category", "misc")
+        cat = pdata.get("category", "") or "uncategorized"
+        pdata["category"] = cat
         categories.setdefault(cat, []).append({**pdata, "id": pid})
 
     # 7. Write style.css and script.js
@@ -139,8 +147,15 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # 9-10. Render category indexes and page details
     cat_dir = site_dir / "categories"
     cat_dir.mkdir(exist_ok=True)
+
+    # Render categories/index.html listing all categories
+    all_cats_html = render_categories_index(categories)
+    (cat_dir / "index.html").write_text(all_cats_html, encoding="utf-8")
+
     for cat, cat_pages in categories.items():
-        cat_path = cat_dir / cat
+        # Normalize directory name to lowercase for case-sensitive filesystems
+        cat_lower = cat.lower()
+        cat_path = cat_dir / cat_lower
         cat_path.mkdir(parents=True, exist_ok=True)
 
         # Category index page
@@ -191,7 +206,27 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             "importance_score": pdata.get("importance", 0),
         })
 
-    # 13. Return stats
+    # 13. Generate graph.html (interactive knowledge graph)
+    graph_html = render_graph_page(graph)
+    (site_dir / "graph.html").write_text(graph_html, encoding="utf-8")
+
+    # 14. Generate changelog.html and update build-history.json
+    history_path = root / "build-history.json"
+    history = _load_build_history(history_path)
+    build_entry = {
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "total_pages": len(pages),
+        "total_categories": len(categories),
+        "total_edges": graph["stats"]["total_edges"],
+        "total_clusters": graph["stats"]["total_clusters"],
+    }
+    history.append(build_entry)
+    history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+    changelog_html = render_changelog_page(history)
+    (site_dir / "changelog.html").write_text(changelog_html, encoding="utf-8")
+
+    # 15. Return stats
     return {
         "total_pages": len(pages),
         "total_categories": len(categories),
@@ -201,13 +236,17 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
 
 
 def _page_url(page_id: str) -> str:
-    """Convert page ID (slug) to URL path."""
+    """Convert page ID (slug) to URL path.
+
+    All paths are lowercased to match the lowercase directory structure
+    written to site/ (required for case-sensitive filesystems).
+    """
     parts = page_id.split("/")
     if len(parts) >= 2:
-        cat = "/".join(parts[:-1])
+        cat = "/".join(parts[:-1]).lower()
         slug = parts[-1]
         return f"/categories/{cat}/{slug}.html"
-    return f"/categories/{page_id}/{page_id}.html"
+    return f"/categories/{page_id.lower()}/{page_id}.html"
 
 
 def _build_search_index(pages: dict, categories: dict) -> dict:
@@ -229,3 +268,15 @@ def _build_search_index(pages: dict, categories: dict) -> dict:
         "categories": sorted(categories.keys()),
         "_mode": "flat",
     }
+
+
+def _load_build_history(path: Path) -> list:
+    """Load existing build history or return empty list."""
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
