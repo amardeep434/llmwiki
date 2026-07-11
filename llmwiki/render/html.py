@@ -62,19 +62,31 @@ def _type_badge(category: str) -> str:
 
 # FIX 8: Improved type badge detection using language + category
 def _detect_type_badge(page_data: dict) -> str:
-    """Detect the correct type badge from page data (language + category)."""
+    """Detect the correct type badge from page data (language + category + source_path)."""
     lang = page_data.get("language", "")
     cat = page_data.get("category", "").lower()
+    src = page_data.get("source_path", "").lower()
+    # Detect from language field
     if lang == "java":
         return "java"
     if lang == "xml":
         return "xml"
+    if lang == "python":
+        return "java"  # reuse java badge for source code
+    # Detect from source path extension
+    if src.endswith(".java"):
+        return "java"
+    if src.endswith(".xml"):
+        return "xml"
+    # Detect from category
     if "beanshell" in cat:
         return "beanshell"
     if "connector" in cat or "iiq-docs" in cat or "docs" in cat:
         return "docs"
-    if lang == "" and any(x in cat for x in ["rule", "workflow", "form", "task"]):
+    if any(x in cat for x in ["rule", "workflow", "form", "task", "emailtemplate"]):
         return "xml"
+    if "token" in cat:
+        return "tokens"
     return "config"
 
 

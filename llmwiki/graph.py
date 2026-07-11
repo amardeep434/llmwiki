@@ -106,6 +106,7 @@ def _load_pages(raw_dir: Path) -> dict[str, dict]:
         pages[slug] = {
             "title": meta.get("title", md_file.stem),
             "category": meta.get("category", ""),
+            "language": meta.get("language", ""),
             "tags": _parse_list(meta.get("tags", [])),
             "references": all_refs,
             "source_path": meta.get("source_path", ""),
