@@ -585,9 +585,188 @@ document.addEventListener("DOMContentLoaded", function() {
   initBottomTabs();
   initEventDelegation();
   initPaletteInput();
+  initMiniGraph();
 });
 
 document.addEventListener("keydown", handleGlobalKeys);
+
+// ==========================================================================
+// MINI GRAPH (Local page neighborhood — 2-hop canvas render)
+// ==========================================================================
+
+function initMiniGraph() {
+  var container = document.getElementById("mini-graph");
+  if (!container) return;
+  var pageId = container.getAttribute("data-page");
+  if (!pageId) return;
+
+  fetch("/cross-references.json")
+    .then(function(r) { return r.json(); })
+    .then(function(graph) { renderMiniGraph(container, graph, pageId); })
+    .catch(function() { container.innerHTML = '<p class="text-muted" style="padding:8px;font-size:12px;">Graph unavailable</p>'; });
+}
+
+function renderMiniGraph(container, graph, pageId) {
+  var nodes = graph.nodes || [];
+  var edges = graph.edges || [];
+
+  // Find current node
+  var currentNode = nodes.find(function(n) { return n.id === pageId; });
+  if (!currentNode) {
+    container.innerHTML = '<p class="text-muted" style="padding:8px;font-size:12px;">No graph data</p>';
+    return;
+  }
+
+  // Find 2-hop neighborhood
+  var neighborIds = new Set();
+  neighborIds.add(pageId);
+  // 1-hop
+  edges.forEach(function(e) {
+    if (e.from === pageId) neighborIds.add(e.to);
+    if (e.to === pageId) neighborIds.add(e.from);
+  });
+  // 2-hop
+  var hop1 = new Set(neighborIds);
+  edges.forEach(function(e) {
+    if (hop1.has(e.from)) neighborIds.add(e.to);
+    if (hop1.has(e.to)) neighborIds.add(e.from);
+  });
+
+  // Cap at 40 nodes for readability
+  var neighborArr = Array.from(neighborIds).slice(0, 40);
+  var neighborSet = new Set(neighborArr);
+
+  var localNodes = nodes.filter(function(n) { return neighborSet.has(n.id); });
+  var localEdges = edges.filter(function(e) { return neighborSet.has(e.from) && neighborSet.has(e.to); });
+
+  if (localNodes.length < 2) {
+    container.innerHTML = '<p class="text-muted" style="padding:8px;font-size:12px;">No connections</p>';
+    return;
+  }
+
+  // Canvas render
+  var canvas = document.createElement("canvas");
+  var w = container.clientWidth || 260;
+  var h = 240;
+  canvas.width = w * 2; canvas.height = h * 2;
+  canvas.style.width = w + "px"; canvas.style.height = h + "px";
+  container.appendChild(canvas);
+  var ctx = canvas.getContext("2d");
+  ctx.scale(2, 2);
+
+  // Simple force-directed layout (few iterations)
+  var positions = {};
+  var TYPE_COLORS = {
+    "rule": "#f59e0b", "workflow": "#6366f1", "beanshell": "#ec4899",
+    "connector-guides": "#14b8a6", "iiq-docs": "#f59e0b", "config": "#8b5cf6",
+  };
+
+  localNodes.forEach(function(n, i) {
+    var angle = (2 * Math.PI * i) / localNodes.length;
+    positions[n.id] = {
+      x: w/2 + (w/3) * Math.cos(angle) + (Math.random() - 0.5) * 20,
+      y: h/2 + (h/3) * Math.sin(angle) + (Math.random() - 0.5) * 20,
+      node: n
+    };
+  });
+
+  // Simple spring simulation (30 iterations)
+  for (var iter = 0; iter < 30; iter++) {
+    // Repulsion between all nodes
+    localNodes.forEach(function(a) {
+      localNodes.forEach(function(b) {
+        if (a.id === b.id) return;
+        var pa = positions[a.id], pb = positions[b.id];
+        var dx = pa.x - pb.x, dy = pa.y - pb.y;
+        var dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        var force = 800 / (dist * dist);
+        pa.x += (dx / dist) * force;
+        pa.y += (dy / dist) * force;
+      });
+    });
+    // Attraction along edges
+    localEdges.forEach(function(e) {
+      var pa = positions[e.from], pb = positions[e.to];
+      if (!pa || !pb) return;
+      var dx = pb.x - pa.x, dy = pb.y - pa.y;
+      var dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      var force = (dist - 60) * 0.01;
+      pa.x += (dx / dist) * force;
+      pb.x -= (dx / dist) * force;
+      pa.y += (dy / dist) * force;
+      pb.y -= (dy / dist) * force;
+    });
+    // Center gravity
+    localNodes.forEach(function(n) {
+      var p = positions[n.id];
+      p.x += (w/2 - p.x) * 0.01;
+      p.y += (h/2 - p.y) * 0.01;
+      // Bounds
+      p.x = Math.max(20, Math.min(w - 20, p.x));
+      p.y = Math.max(20, Math.min(h - 20, p.y));
+    });
+  }
+
+  // Draw edges
+  ctx.strokeStyle = "#3f3f46";
+  ctx.lineWidth = 0.5;
+  localEdges.forEach(function(e) {
+    var pa = positions[e.from], pb = positions[e.to];
+    if (!pa || !pb) return;
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  var nodePositions = []; // for click detection
+  localNodes.forEach(function(n) {
+    var p = positions[n.id];
+    var isCurrent = n.id === pageId;
+    var baseColor = "#71717a";
+    var cat = (n.type || "").split("/")[0].toLowerCase();
+    if (TYPE_COLORS[cat]) baseColor = TYPE_COLORS[cat];
+    if (isCurrent) baseColor = "#10b981";
+
+    var radius = isCurrent ? 7 : 4 + (n.importance || 0) * 4;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = baseColor;
+    ctx.fill();
+    if (isCurrent) {
+      ctx.strokeStyle = "#34d399";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    nodePositions.push({ id: n.id, x: p.x, y: p.y, r: radius, type: n.type, title: n.title });
+  });
+
+  // Click handler
+  canvas.addEventListener("click", function(evt) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = (evt.clientX - rect.left) * 2;
+    var my = (evt.clientY - rect.top) * 2;
+    // Scale back since we ctx.scale(2,2)
+    mx /= 2; my /= 2;
+    for (var i = 0; i < nodePositions.length; i++) {
+      var np = nodePositions[i];
+      var dx = mx - np.x, dy = my - np.y;
+      if (dx*dx + dy*dy <= (np.r + 4) * (np.r + 4)) {
+        var cat = (np.type || "uncategorized").toLowerCase();
+        var slug = np.id.split("/").pop();
+        window.location.href = "/categories/" + cat + "/" + slug + ".html";
+        break;
+      }
+    }
+  });
+
+  // Node count label
+  var countEl = document.createElement("div");
+  countEl.style.cssText = "font-size:11px;color:var(--ink-subtle);padding:4px 8px;";
+  countEl.textContent = localNodes.length + " nodes · " + localEdges.length + " edges";
+  container.appendChild(countEl);
+}
 
 })();
 """
