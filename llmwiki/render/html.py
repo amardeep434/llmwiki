@@ -324,8 +324,9 @@ def nav_bar(active: str = "", color_options: list = None) -> str:
 
 def render_sidebar(categories: dict, current_category: str = "",
                    current_url: str = "", clusters: list = None,
-                   total_pages: int = 0) -> str:
-    """Generate left sidebar with collapsible category tree."""
+                   total_pages: int = 0,
+                   content_type_groups: dict | None = None) -> str:
+    """Generate left sidebar with collapsible content type tree."""
     # Calculate total pages if not provided
     if not total_pages:
         for cat_pages in categories.values():
@@ -340,14 +341,14 @@ def render_sidebar(categories: dict, current_category: str = "",
         '<div class="sidebar__heading">Navigation</div>\n',
     ]
 
-    # Dashboard link — FIX 12: active state
+    # Dashboard link
     dash_active = " sidebar__item--active" if current_url == "/" else ""
     parts.append(
         f'<a href="/" class="sidebar__item{dash_active}"><span class="sidebar__item-icon">\u25C6</span>'
         f'<span>Dashboard</span></a>\n'
     )
 
-    # FIX 5: All Pages link
+    # All Pages link
     all_pages_active = " sidebar__item--active" if current_url == "/categories/" else ""
     parts.append(
         f'<a href="/categories/" class="sidebar__item{all_pages_active}">'
@@ -363,7 +364,7 @@ def render_sidebar(categories: dict, current_category: str = "",
     )
     parts.append('</div>\n')
 
-    # FIX 4: Clusters section
+    # Clusters section
     if clusters:
         parts.append('<div class="sidebar__section">\n')
         parts.append('<div class="sidebar__heading">Clusters</div>\n')
@@ -378,54 +379,127 @@ def render_sidebar(categories: dict, current_category: str = "",
             )
         parts.append('</div>\n')
 
-    # Categories section
-    parts.append(
-        '<div class="sidebar__section">\n'
-        '<div class="sidebar__heading">Categories</div>\n'
-    )
-
-    sorted_cats = sorted(categories.items(), key=lambda x: x[0].lower())
-    for cat_name, cat_pages in sorted_cats:
-        count = len(cat_pages) if isinstance(cat_pages, list) else (
-            cat_pages.get("count", 0) if isinstance(cat_pages, dict) else 0
-        )
-        display = escape(_format_category_display(cat_name))
-        cat_url = cat_name.lower()
-        is_active = cat_name.lower() == current_category.lower() if current_category else False
-        active_cls = " sidebar__item--active" if is_active else ""
-
+    # Content Types section (Tier 1 + Tier 2 sub-categories)
+    if content_type_groups:
         parts.append(
-            f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item{active_cls}" '
-            f'data-href="/categories/{escape(cat_url)}/">'
-            f'<span class="sidebar__item-icon">\u25B8</span>'
-            f'<span>{display}</span>'
-            f'<span class="sidebar__item-count">{count}</span></a>\n'
+            '<div class="sidebar__section">\n'
+            '<div class="sidebar__heading">Content Types</div>\n'
+        )
+        for ct_name, ct_data in content_type_groups.items():
+            icon = ct_data.get("icon", "\U0001f4e6")
+            count = ct_data.get("count", 0)
+            subcats = ct_data.get("subcategories", {})
+            has_subcats = bool(subcats)
+
+            # Tier 1 item — collapsible if it has subcategories
+            if has_subcats:
+                parts.append(
+                    f'<details class="sidebar__ct-group">\n'
+                    f'<summary class="sidebar__item sidebar__ct-tier1">'
+                    f'<span class="sidebar__item-icon">{icon}</span>'
+                    f'<span>{escape(ct_name)}</span>'
+                    f'<span class="sidebar__item-count">{count:,}</span>'
+                    f'</summary>\n'
+                )
+                # Tier 2 sub-categories — show top 8, hide <3 items behind "show all"
+                visible = []
+                hidden = []
+                for sc_name, sc_data in list(subcats.items())[:16]:
+                    if sc_data["count"] >= 3:
+                        visible.append((sc_name, sc_data))
+                    else:
+                        hidden.append((sc_name, sc_data))
+                # Show top 8 visible
+                for sc_name, sc_data in visible[:8]:
+                    sc_display = escape(_format_category_display(sc_name))
+                    sc_url = escape(sc_data.get("url", "#"))
+                    sc_active = " sidebar__item--active" if current_category and sc_name.lower() == current_category.lower() else ""
+                    parts.append(
+                        f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2{sc_active}">'
+                        f'<span class="sidebar__item-icon">\u25B8</span>'
+                        f'<span>{sc_display}</span>'
+                        f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
+                    )
+                # "show all" for remaining visible + hidden
+                remaining = visible[8:] + hidden
+                if remaining:
+                    remaining_count = sum(r[1]["count"] for r in remaining)
+                    parts.append(
+                        f'<details class="sidebar__ct-more">\n'
+                        f'<summary class="sidebar__item sidebar__ct-tier2">'
+                        f'<span class="sidebar__item-icon">\u2026</span>'
+                        f'<span>{len(remaining)} more</span>'
+                        f'<span class="sidebar__item-count">{remaining_count}</span>'
+                        f'</summary>\n'
+                    )
+                    for sc_name, sc_data in remaining:
+                        sc_display = escape(_format_category_display(sc_name))
+                        sc_url = escape(sc_data.get("url", "#"))
+                        parts.append(
+                            f'<a href="{sc_url}" class="sidebar__item sidebar__ct-tier2">'
+                            f'<span class="sidebar__item-icon">\u25B8</span>'
+                            f'<span>{sc_display}</span>'
+                            f'<span class="sidebar__item-count">{sc_data["count"]}</span></a>\n'
+                        )
+                    parts.append('</details>\n')
+                parts.append('</details>\n')
+            else:
+                parts.append(
+                    f'<div class="sidebar__item sidebar__ct-tier1">'
+                    f'<span class="sidebar__item-icon">{icon}</span>'
+                    f'<span>{escape(ct_name)}</span>'
+                    f'<span class="sidebar__item-count">{count:,}</span></div>\n'
+                )
+        parts.append('</div>\n')
+    else:
+        # Fallback: flat category list when content_type_groups not provided
+        parts.append(
+            '<div class="sidebar__section">\n'
+            '<div class="sidebar__heading">Categories</div>\n'
         )
 
-        # FIX 11: Show nested tree items for categories (top 5 pages)
-        if isinstance(cat_pages, list) and (is_active or count <= 5):
-            show_pages = cat_pages[:5]
-            if show_pages:
-                parts.append('<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n')
-                for p in show_pages:
-                    p_title = escape(p.get("title", "?")[:30])
-                    p_url = p.get("url", "#")
-                    # FIX 12: active state for nested items
-                    nested_active = " sidebar__item--active" if current_url and current_url == p_url else ""
-                    parts.append(
-                        f'<li><a class="sidebar__item{nested_active}" href="{escape(p_url)}" data-href="{escape(p_url)}">'
-                        f'<span class="sidebar__item-icon">\u00B7</span>'
-                        f'<span>{p_title}</span></a></li>\n'
-                    )
-                if count > 5:
-                    parts.append(
-                        f'<li><a class="sidebar__item" href="/categories/{escape(cat_url)}/">'
-                        f'<span class="sidebar__item-icon">\u2026</span>'
-                        f'<span>{count - 5} more</span></a></li>\n'
-                    )
-                parts.append('</ul>\n</div>\n')
+        sorted_cats = sorted(categories.items(), key=lambda x: x[0].lower())
+        for cat_name, cat_pages in sorted_cats:
+            count = len(cat_pages) if isinstance(cat_pages, list) else (
+                cat_pages.get("count", 0) if isinstance(cat_pages, dict) else 0
+            )
+            display = escape(_format_category_display(cat_name))
+            cat_url = cat_name.lower()
+            is_active = cat_name.lower() == current_category.lower() if current_category else False
+            active_cls = " sidebar__item--active" if is_active else ""
 
-    parts.append('</div>\n</aside>\n')
+            parts.append(
+                f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item{active_cls}" '
+                f'data-href="/categories/{escape(cat_url)}/">'
+                f'<span class="sidebar__item-icon">\u25B8</span>'
+                f'<span>{display}</span>'
+                f'<span class="sidebar__item-count">{count}</span></a>\n'
+            )
+
+            if isinstance(cat_pages, list) and (is_active or count <= 5):
+                show_pages = cat_pages[:5]
+                if show_pages:
+                    parts.append('<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n')
+                    for p in show_pages:
+                        p_title = escape(p.get("title", "?")[:30])
+                        p_url = p.get("url", "#")
+                        nested_active = " sidebar__item--active" if current_url and current_url == p_url else ""
+                        parts.append(
+                            f'<li><a class="sidebar__item{nested_active}" href="{escape(p_url)}" data-href="{escape(p_url)}">'
+                            f'<span class="sidebar__item-icon">\u00B7</span>'
+                            f'<span>{p_title}</span></a></li>\n'
+                        )
+                    if count > 5:
+                        parts.append(
+                            f'<li><a class="sidebar__item" href="/categories/{escape(cat_url)}/">'
+                            f'<span class="sidebar__item-icon">\u2026</span>'
+                            f'<span>{count - 5} more</span></a></li>\n'
+                        )
+                    parts.append('</ul>\n</div>\n')
+
+        parts.append('</div>\n')
+
+    parts.append('</aside>\n')
     return "".join(parts)
 
 
@@ -505,6 +579,7 @@ def render_dashboard(
     top_pages: list,
     *,
     clusters: list = None,
+    content_type_groups: dict | None = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -517,7 +592,8 @@ def render_dashboard(
         '<div class="shell">\n',
         _topbar("home", color_options),
         render_sidebar(categories, clusters=clusters or [],
-                       total_pages=stats.get("total_pages", 0)),
+                       total_pages=stats.get("total_pages", 0),
+                       content_type_groups=content_type_groups),
         '<main class="main">\n',
     ]
 
@@ -600,8 +676,46 @@ def render_dashboard(
         )
         parts.append('</div>\n')
 
-    # Category cards grid
-    if categories:
+    # Content Type cards grid
+    ct_source = content_type_groups if content_type_groups else None
+    if ct_source:
+        parts.append('<div class="section">\n')
+        parts.append(
+            '<div class="section__header">'
+            '<h2 class="section__title">Content Types</h2>'
+            f'<span class="section__count">{len(ct_source)} types</span>'
+            '</div>\n'
+        )
+        parts.append('<div class="cards-grid">\n')
+        for ct_name, ct_data in ct_source.items():
+            count = ct_data.get("count", 0)
+            icon = ct_data.get("icon", "\U0001f4e6")
+            color_var = ct_data.get("color", "node-config")
+            icon_color = f"var(--{color_var})" if not color_var.startswith("var(") else color_var
+            desc = ct_data.get("desc", "")
+            desc_html = f'<div class="card__desc">{escape(desc)}</div>' if desc else ""
+            # Link to categories index filtered view
+            cat_url = "/categories/"
+            # Show top subcategories in the card
+            subcats = ct_data.get("subcategories", {})
+            subcat_html = ""
+            if subcats:
+                top_subs = list(subcats.items())[:4]
+                sub_items = ", ".join(
+                    f'{_format_category_display(sn)} ({sd["count"]})'
+                    for sn, sd in top_subs
+                )
+                subcat_html = f'<div class="card__subs">{escape(sub_items)}</div>'
+            parts.append(
+                f'<a href="{cat_url}" class="card">'
+                f'<div class="card__header">'
+                f'<span class="card__icon-emoji">{icon}</span>'
+                f'<span class="card__title">{escape(ct_name)}</span>'
+                f'<span class="card__count">{count:,}</span>'
+                f'</div>{desc_html}{subcat_html}</a>\n'
+            )
+        parts.append('</div>\n</div>\n')
+    elif categories:
         total_cat_count = len(categories)
         sorted_cats = sorted(
             categories.items(),
@@ -625,12 +739,9 @@ def render_dashboard(
                 cat_data.get("count", 0) if isinstance(cat_data, dict) else 0
             )
             display = escape(cat_name)
-            # Use grouped URL if available, otherwise construct from name
             cat_url = escape(cat_data.get("url", f"/categories/{cat_name.lower()}/")) if isinstance(cat_data, dict) else f"/categories/{cat_name.lower()}/"
-            # Use grouped color if available
             color_var = cat_data.get("color", "node-config") if isinstance(cat_data, dict) else "node-config"
             icon_color = f"var(--{color_var})" if not color_var.startswith("var(") else color_var
-            # FIX 3: card description
             desc = ""
             if isinstance(cat_data, dict):
                 desc = cat_data.get("description", "")
@@ -1252,7 +1363,9 @@ def render_changelog_page(
         '</aside>\n',
         '<main class="main">\n',
         '<div class="section">\n'
-        '<div class="section__header"><h2 class="section__title">Changelog</h2></div>\n'
+        '<div class="section__header"><h2 class="section__title">Changelog</h2>'
+        f'<span class="section__count">{len(history)} builds</span>'
+        '</div>\n'
         '</div>\n',
     ]
 
@@ -1264,12 +1377,14 @@ def render_changelog_page(
     else:
         parts.append('<div class="table-wrap">\n<table>\n')
         parts.append(
-            '<thead><tr><th>Build Date</th><th>Pages</th>'
+            '<thead><tr><th>#</th><th>Build Date</th><th>Type</th><th>Pages</th>'
             '<th>Categories</th><th>Cross-refs</th><th>Clusters</th>'
             '</tr></thead>\n'
         )
         parts.append('<tbody>\n')
-        for entry in reversed(history):
+        total = len(history)
+        for idx, entry in enumerate(reversed(history)):
+            build_num = total - idx
             ts = escape(entry.get("timestamp", "?"))
             try:
                 from datetime import datetime as _dt
@@ -1277,13 +1392,21 @@ def render_changelog_page(
                 display_ts = dt.strftime("%Y-%m-%d %H:%M UTC")
             except Exception:
                 display_ts = ts
+            build_type = escape(entry.get("type", "full"))
+            type_badge = (
+                '<span class="badge badge--config">incremental</span>'
+                if build_type == "incremental"
+                else '<span class="badge badge--java">full</span>'
+            )
             parts.append(
                 f'<tr>'
+                f'<td class="td-mono">{build_num}</td>'
                 f'<td>{escape(display_ts)}</td>'
-                f'<td class="td-mono">{entry.get("total_pages", 0)}</td>'
-                f'<td class="td-mono">{entry.get("total_categories", 0)}</td>'
-                f'<td class="td-mono">{entry.get("total_edges", 0)}</td>'
-                f'<td class="td-mono">{entry.get("total_clusters", 0)}</td>'
+                f'<td>{type_badge}</td>'
+                f'<td class="td-mono">{entry.get("total_pages", 0):,}</td>'
+                f'<td class="td-mono">{entry.get("total_categories", 0):,}</td>'
+                f'<td class="td-mono">{entry.get("total_edges", 0):,}</td>'
+                f'<td class="td-mono">{entry.get("total_clusters", 0):,}</td>'
                 f'</tr>\n'
             )
         parts.append('</tbody></table>\n</div>\n')
@@ -1303,6 +1426,7 @@ def render_changelog_page(
 def render_categories_index(
     categories: dict,
     *,
+    content_type_groups: dict | None = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -1315,7 +1439,7 @@ def render_categories_index(
                   color_options=color_options),
         '<div class="shell">\n',
         _topbar("categories", color_options),
-        render_sidebar(categories),
+        render_sidebar(categories, content_type_groups=content_type_groups),
         '<main class="main">\n',
         breadcrumbs([("Home", "/"), ("Categories", "#")]),
         f'<div class="section">\n'

@@ -165,16 +165,17 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         reverse=True,
     )
 
-    # Group 250+ sub-categories into logical dashboard groups
-    dashboard_groups = _group_categories_for_dashboard(categories)
+    # Build generic content type groups (Tier 1 + Tier 2 sub-categories)
+    content_type_groups = _build_content_type_groups(pages, categories)
 
     # Add last_build to stats for the 4th stats card
     dash_stats = dict(graph["stats"])
     dash_stats["last_build"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     dashboard_html = render_dashboard(
-        dash_stats, [], dashboard_groups, top_pages,
+        dash_stats, [], content_type_groups, top_pages,
         clusters=graph.get("clusters", []),
+        content_type_groups=content_type_groups,
         **theme_kwargs,
     )
     (site_dir / "index.html").write_text(dashboard_html, encoding="utf-8")
@@ -184,7 +185,9 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     cat_dir.mkdir(exist_ok=True)
 
     # Render categories/index.html listing all categories
-    all_cats_html = render_categories_index(categories, **theme_kwargs)
+    all_cats_html = render_categories_index(categories,
+                                            content_type_groups=content_type_groups,
+                                            **theme_kwargs)
     (cat_dir / "index.html").write_text(all_cats_html, encoding="utf-8")
 
     for cat, cat_pages in categories.items():
@@ -325,59 +328,99 @@ def _load_build_history(path: Path) -> list:
     return []
 
 
-# Mapping of top-level category segments to logical dashboard groups
-_DASHBOARD_GROUP_MAP = {
-    "rule": ("Rules", "node-xml", "Business logic rules and rule libraries"),
-    "workflow": ("Workflows", "node-xml", "Identity lifecycle and provisioning workflows"),
-    "emailtemplate": ("Email Templates", "node-config", "Notification and alert email templates"),
-    "taskdefinition": ("Task Definitions", "node-config", "Scheduled and on-demand task configurations"),
-    "form": ("Forms", "node-config", "UI form definitions for identity management"),
-    "application": ("Applications", "node-config", "Connector definitions for target systems"),
-    "custom": ("Custom Objects", "node-config", "Global configuration and custom object definitions"),
-    "certificationdefinition": ("Certifications", "node-config", "Access certification campaign definitions"),
-    "correlationconfig": ("Correlation Config", "node-config", "Identity correlation and matching rules"),
-    "dynamicscope": ("Dynamic Scopes", "node-config", "Dynamic population scoping definitions"),
-    "identitytrigger": ("Identity Triggers", "node-config", "Event-driven identity lifecycle triggers"),
-    "quicklink": ("Quick Links", "node-config", "Navigation quick link definitions"),
-    "workgroup": ("Workgroups", "node-config", "Workgroup and team definitions"),
-    "requestdefinition": ("Request Definitions", "node-config", "Access request type definitions"),
-    "objectconfig": ("Object Config", "node-config", "Object type configuration metadata"),
-    "configuration": ("Configuration", "node-config", "System-level configuration objects"),
-    "ssf_features": ("SSF Features", "node-config", "SailPoint Services Standard features"),
-    "ssf_frameworks": ("SSF Frameworks", "node-config", "SailPoint Services Standard frameworks"),
-    "ssf_tools": ("SSF Tools", "node-config", "SailPoint Services Standard deployment tools"),
-    "beanshell": ("BeanShell Scripts", "node-beanshell", "Extracted inline scripts from workflows and rules"),
-    "com": ("Java Source", "node-java", "Core utility classes, tasks, reports, and integrations"),
-    "sailpoint": ("SailPoint SDK", "node-java", "SailPoint API and SDK classes"),
-    "bsh": ("BeanShell Engine", "node-java", "BeanShell scripting engine classes"),
-    "connector-guides": ("Connector Guides", "node-docs", "SailPoint connector configuration and setup guides"),
-    "iiq-docs": ("IIQ Documentation", "node-docs", "IdentityIQ 8.5 official documentation"),
-    "docs": ("Project Docs", "node-docs", "Project-level documentation and guides"),
-    "config": ("Config Files", "node-config", "General configuration file definitions"),
-    "tokens": ("Token Registry", "node-tokens", "Environment token definitions and mappings"),
-    "xml": ("XML Config", "node-xml", "XML-based configuration objects"),
+# ---------------------------------------------------------------------------
+# Content Type Detection (generic — works for any codebase)
+# ---------------------------------------------------------------------------
+
+
+def _detect_content_type(page_data: dict) -> str:
+    """Detect content type from page data. Generic — works for any codebase."""
+    lang = page_data.get("language", "")
+    cat = page_data.get("category", "").lower()
+    tags = page_data.get("tags", [])
+    src = page_data.get("source_path", "")
+    ext = Path(src).suffix.lower() if src else ""
+
+    if cat.startswith("beanshell") or "beanshell" in tags:
+        return "Inline Scripts"
+    if cat == "tokens":
+        return "Token Registry"
+    if "pdf" in tags or ext == ".pdf":
+        return "Documentation"
+    if lang in ("java", "python", "javascript", "typescript", "go", "rust",
+                "csharp", "ruby", "kotlin", "swift", "scala", "php", "c", "cpp"):
+        return "Source Code"
+    if lang == "xml" or ext in (".xml", ".xsl", ".xsd", ".wsdl"):
+        return "XML / Markup"
+    if ext in (".md", ".mdx", ".rst"):
+        return "Documentation"
+    if lang in ("properties", "json", "yaml", "toml", "ini", "cfg") or \
+       ext in (".properties", ".json", ".yaml", ".yml", ".toml", ".ini", ".env", ".cfg"):
+        return "Configuration"
+    return "Other"
+
+
+_CONTENT_TYPE_META = {
+    "Source Code": {"icon": "\U0001f4c4", "color": "node-java", "desc": "Application source code files"},
+    "XML / Markup": {"icon": "\U0001f4cb", "color": "node-xml", "desc": "XML configuration and markup files"},
+    "Documentation": {"icon": "\U0001f4da", "color": "node-docs", "desc": "PDF guides, markdown documentation"},
+    "Configuration": {"icon": "\u2699\ufe0f", "color": "node-config", "desc": "Properties, JSON, YAML config files"},
+    "Inline Scripts": {"icon": "\U0001f4dc", "color": "node-beanshell", "desc": "Extracted inline scripts from XML"},
+    "Token Registry": {"icon": "\U0001f3f7\ufe0f", "color": "node-tokens", "desc": "Environment token documentation"},
+    "Other": {"icon": "\U0001f4e6", "color": "node-config", "desc": "Other project files"},
 }
 
 
-def _group_categories_for_dashboard(
-    categories: dict[str, list[dict]],
-) -> dict[str, dict]:
-    """Group 250+ sub-categories into ~15 logical dashboard groups.
+def _build_content_type_groups(pages: dict, categories: dict) -> dict:
+    """Build Tier 1 content type groups with Tier 2 sub-categories.
 
-    Returns {display_name: {"count": N, "color": css_var, "url": first_matching_category_url, "description": str}}
+    Returns: {
+        "Source Code": {
+            "count": 113,
+            "icon": "📄",
+            "color": "node-java",
+            "desc": "...",
+            "subcategories": {
+                "com/vf/core/utility": {"count": 13, "url": "/categories/com/vf/core/utility/"},
+                ...
+            }
+        },
+        ...
+    }
     """
     groups: dict[str, dict] = {}
 
-    for cat, pages_list in categories.items():
-        top = cat.split("/")[0].lower() if "/" in cat else cat.lower()
-        entry = _DASHBOARD_GROUP_MAP.get(top, (top.replace("-", " ").title(), "node-config", ""))
-        display = entry[0]
-        color = entry[1]
-        desc = entry[2] if len(entry) > 2 else ""
+    for pid, pdata in pages.items():
+        ct = _detect_content_type(pdata)
+        cat = pdata.get("category", "") or "uncategorized"
 
-        if display not in groups:
-            groups[display] = {"count": 0, "color": color, "url": f"/categories/{cat.lower()}/", "description": desc}
-        groups[display]["count"] += len(pages_list)
+        if ct not in groups:
+            meta = _CONTENT_TYPE_META.get(ct, _CONTENT_TYPE_META["Other"])
+            groups[ct] = {
+                "count": 0,
+                "icon": meta["icon"],
+                "color": meta["color"],
+                "desc": meta["desc"],
+                "subcategories": {},
+            }
 
-    # Sort by count descending
-    return dict(sorted(groups.items(), key=lambda x: x[1]["count"], reverse=True))
+        groups[ct]["count"] += 1
+
+        # Add to subcategory (use top 2 path segments for readability)
+        parts = cat.split("/")
+        subcat = "/".join(parts[:2]) if len(parts) > 1 else cat
+        if subcat not in groups[ct]["subcategories"]:
+            groups[ct]["subcategories"][subcat] = {
+                "count": 0,
+                "url": f"/categories/{cat.lower()}/",
+            }
+        groups[ct]["subcategories"][subcat]["count"] += 1
+
+    # Sort groups by count desc, subcategories by count desc
+    sorted_groups = dict(sorted(groups.items(), key=lambda x: x[1]["count"], reverse=True))
+    for g in sorted_groups.values():
+        g["subcategories"] = dict(sorted(
+            g["subcategories"].items(), key=lambda x: x[1]["count"], reverse=True
+        ))
+
+    return sorted_groups
