@@ -57,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     p_lint.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # stats
-    sub.add_parser("stats", help="Print inventory statistics")
+    p_stats = sub.add_parser("stats", help="Print inventory statistics")
+    p_stats.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # diff
     sub.add_parser("diff", help="Show changes since last build")
@@ -290,9 +291,11 @@ def _cmd_lint(args) -> int:
 
 def _cmd_stats(args) -> int:
     """Print inventory statistics."""
-    raw = Path("raw")
-    wiki = Path("wiki")
-    site = Path("site")
+    cfg_path = Path(args.config).resolve()
+    root = cfg_path.parent
+    raw = root / "raw"
+    wiki = root / "wiki"
+    site = root / "site"
     print("📊 LLMWiki Statistics")
     for label, d in [("Raw", raw), ("Wiki", wiki), ("Site", site)]:
         if d.exists():

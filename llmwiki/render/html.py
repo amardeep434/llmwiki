@@ -113,6 +113,7 @@ def page_foot() -> str:
         '<script src="https://cdn.jsdelivr.net/gh/highlightjs/'
         'cdn-release@11.9.0/build/highlight.min.js" defer '
         'crossorigin="anonymous"></script>\n'
+        '<!-- To generate SRI hash: curl -s https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js | openssl dgst -sha384 -binary | openssl base64 -A -->\n'
         '<script src="/script.js" defer></script>\n'
         '</body>\n'
         '</html>\n'

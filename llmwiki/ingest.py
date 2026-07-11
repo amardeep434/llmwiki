@@ -60,13 +60,14 @@ def ingest_source(
                 continue
 
             # Write to raw/
-            out_path = ""
+            out_paths = []
             for page in pages:
                 out_path = raw_dir / page.category / f"{page.slug.split('/')[-1]}.md"
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(page.to_markdown(), encoding="utf-8")
+                out_paths.append(str(out_path))
 
-            state.record_file(src_key, content_hash, str(out_path) if pages else "")
+            state.record_file(src_key, content_hash, ",".join(out_paths) if out_paths else "")
             # Map "new" → "added" for the counts dict
             if classification == "new":
                 counts["added"] += 1
@@ -121,13 +122,14 @@ def ingest_pdfs(
                 counts["errors"] += 1
                 continue
 
-            out_path = ""
+            out_paths = []
             for page in pages:
                 out_path = raw_dir / page.category / f"{page.slug.split('/')[-1]}.md"
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(page.to_markdown(), encoding="utf-8")
+                out_paths.append(str(out_path))
 
-            state.record_file(src_key, content_hash, str(out_path) if pages else "")
+            state.record_file(src_key, content_hash, ",".join(out_paths) if out_paths else "")
             if classification == "new":
                 counts["added"] += 1
             else:

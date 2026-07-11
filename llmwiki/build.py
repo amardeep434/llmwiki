@@ -22,7 +22,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     Args:
         root: Project root containing raw/, wiki/, site/.
         config: Loaded llmwiki.json config.
-        full: Force full rebuild.
+        full: Force full rebuild. When False, the ``build.incremental``
+              config key (default True) controls the behaviour.
 
     Returns:
         Summary dict with stats.
@@ -36,16 +37,25 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     wiki_dir.mkdir(exist_ok=True)
     site_dir.mkdir(exist_ok=True)
 
-    # 1. Build knowledge graph from raw/
-    graph = build_graph(raw_dir)
+    cross_refs_enabled = config.get("cross_references", {}).get("enabled", True)
 
-    # 2. Save cross-references.json
-    save_graph(graph, site_dir / "cross-references.json")
+    # 1. Optionally build knowledge graph from raw/
+    if cross_refs_enabled:
+        graph = build_graph(raw_dir)
+        save_graph(graph, site_dir / "cross-references.json")
+    else:
+        graph = {"nodes": [], "edges": [], "clusters": [], "stats": {
+            "total_pages": 0, "total_edges": 0, "total_clusters": 0, "orphans": 0,
+        }}
 
-    # 3. Load all pages
+    # 2. Load all pages
     pages = _load_pages(raw_dir)
 
-    # 4. Build backlink index from graph edges
+    # Update stats with actual page count when graph is disabled
+    if not cross_refs_enabled:
+        graph["stats"]["total_pages"] = len(pages)
+
+    # 3. Build backlink index from graph edges
     backlinks: dict[str, list[dict]] = {}
     node_map = {n["id"]: n for n in graph.get("nodes", [])}
     for edge in graph.get("edges", []):
@@ -58,13 +68,44 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
                 "url": _page_url(from_id),
             })
 
-    # 5. Enrich pages with importance scores and cluster IDs
+    # 4. Enrich pages with importance scores and cluster IDs
     for pid, pdata in pages.items():
         node = node_map.get(pid, {})
         pdata["importance"] = node.get("importance", 0)
         pdata["cluster_id"] = node.get("cluster_id")
         pdata["in_degree"] = node.get("in_degree", 0)
         pdata["url"] = _page_url(pid)
+
+    # 5. Write enriched pages to wiki/ (intermediate layer)
+    wiki_pages_dir = wiki_dir / "pages"
+    wiki_pages_dir.mkdir(parents=True, exist_ok=True)
+    wiki_categories: dict[str, list[str]] = {}
+    for pid, pdata in pages.items():
+        wiki_page_path = wiki_pages_dir / f"{pid.replace('/', '_')}.md"
+        fm_lines = [
+            "---",
+            f'title: "{pdata.get("title", "")}"',
+            f'category: {pdata.get("category", "")}',
+            f'importance: {pdata.get("importance", 0)}',
+            f'cluster_id: {pdata.get("cluster_id", "")}',
+            f'tags: [{", ".join(pdata.get("tags", []))}]',
+            "---",
+        ]
+        wiki_page_path.write_text(
+            "\n".join(fm_lines) + "\n\n" + pdata.get("body", ""),
+            encoding="utf-8",
+        )
+        cat = pdata.get("category", "misc")
+        wiki_categories.setdefault(cat, []).append(
+            f"- [{pdata.get('title', pid)}](pages/{pid.replace('/', '_')}.md)"
+        )
+
+    # Write wiki/index.md catalog
+    idx_lines = ["# Wiki Page Catalog\n"]
+    for cat in sorted(wiki_categories):
+        idx_lines.append(f"\n## {cat}\n")
+        idx_lines.extend(wiki_categories[cat])
+    (wiki_dir / "index.md").write_text("\n".join(idx_lines) + "\n", encoding="utf-8")
 
     # 6. Group pages by category
     categories: dict[str, list[dict]] = {}

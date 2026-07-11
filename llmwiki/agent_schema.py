@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Callable
 
 _LLMWIKI_MARKER = "<!-- llmwiki:auto -->"
 
@@ -165,7 +166,7 @@ def write_agent_schemas(
     detected = detect_agents(project_root)
     written: list[str] = []
 
-    generators: dict[str, tuple[Path, callable]] = {
+    generators: dict[str, tuple[Path, Callable[..., str]]] = {
         "claude_md": (project_root / "CLAUDE.md", generate_claude_md),
         "agents_md": (project_root / "AGENTS.md", generate_agents_md),
         "copilot_instructions": (

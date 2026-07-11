@@ -21,7 +21,8 @@ def create_default_config(name: str, source_path: str) -> dict:
         "project": {"name": name, "description": ""},
         "sources": [{"path": source_path, "type": "auto", "exclude": list(DEFAULT_EXCLUDE)}],
         "pdf_sources": [],
-        "build": {"out_dir": "site", "incremental": True, "search_mode": "auto"},
+        "build": {"out_dir": "site", "incremental": True},
+        # "build.search_mode" reserved for future use (e.g. "fts5", "trigram")
         "serve": {"port": 8765, "host": "127.0.0.1"},
         "cross_references": {"enabled": True, "importance_iterations": 20, "cluster_min_size": 3},
         "exclude_global": list(DEFAULT_EXCLUDE),
