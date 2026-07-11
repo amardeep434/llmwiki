@@ -403,11 +403,19 @@ def _convert_pdf_structured(path: Path, output_dir: Path | None = None) -> str:
                     page_lines.append((y_pos, f"\n{'#' * level} {full_line_text}\n"))
                     continue
 
-                # Check for code (monospace)
+                # Check for code (monospace) — skip very short spans (likely bullet glyphs)
                 mono_chars = sum(len(s.text) for s in line_spans if s.is_monospace)
                 total_chars = sum(len(s.text) for s in line_spans)
-                if total_chars > 0 and mono_chars / total_chars > 0.7:
+                stripped_text = full_line_text.strip()
+                if (total_chars > 3 and mono_chars / total_chars > 0.7
+                        and len(stripped_text) > 3):
                     page_lines.append((y_pos, f"```code\n{full_line_text}"))
+                    continue
+                # Single char monospace = sub-bullet marker (o, n, ●, etc.)
+                if total_chars <= 3 and mono_chars > 0 and stripped_text in (
+                    "o", "n", "l", "·", "●", "•", "▪", "■", "►", "‣", "-"
+                ):
+                    page_lines.append((y_pos, "  -"))
                     continue
 
                 # Regular body text — apply inline formatting
