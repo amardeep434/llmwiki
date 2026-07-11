@@ -194,9 +194,10 @@ def _add_method_anchors(html_body: str) -> str:
     def _add_anchors_in_pre(match: re.Match) -> str:
         pre_content = match.group(0)
         for m in methods:
-            # Only replace the first occurrence of each method name in this block
+            # Match method declarations, not calls:
+            # Declarations are preceded by whitespace/type keywords, not by '.'
             pre_content = re.sub(
-                rf'(\b{re.escape(m)}\b)(\s*\()',
+                rf'(?<!\.)(?<!\w)({re.escape(m)})(\s*\()',
                 rf'<span id="method-{m}" class="method-anchor">\1</span>\2',
                 pre_content,
                 count=1,
