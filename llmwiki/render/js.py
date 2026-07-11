@@ -1120,6 +1120,28 @@ function initPaletteInput() {
   });
 }
 
+/* ===== Method Anchor Scroll (handles nested overflow containers) ===== */
+function initMethodLinks() {
+  document.addEventListener("click", function(e) {
+    var link = e.target.closest(".method-link");
+    if (!link) return;
+    var href = link.getAttribute("href");
+    if (!href || href.charAt(0) !== "#") return;
+    e.preventDefault();
+    var target = document.getElementById(href.substring(1));
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    /* Flash highlight */
+    target.style.background = "rgba(16,185,129,0.3)";
+    target.style.borderRadius = "3px";
+    target.style.padding = "0 3px";
+    setTimeout(function() {
+      target.style.background = "";
+      target.style.padding = "";
+    }, 2000);
+  });
+}
+
 /* ===== Init ===== */
 document.addEventListener("DOMContentLoaded", function() {
   fetchSearchIndex();
@@ -1131,6 +1153,7 @@ document.addEventListener("DOMContentLoaded", function() {
   initBottomTabs();
   initEventDelegation();
   initPaletteInput();
+  initMethodLinks();
   initMiniGraph();
   initGraphToggle();
 });
