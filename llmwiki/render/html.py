@@ -426,19 +426,14 @@ def render_dashboard(
             count = len(cat_data) if isinstance(cat_data, list) else (
                 cat_data.get("count", 0) if isinstance(cat_data, dict) else 0
             )
-            display = escape(_format_category_display(cat_name))
-            cat_url = escape(cat_name.lower())
-            base = cat_name.split("/")[0].lower()
-            badge_type = _TYPE_BADGE_MAP.get(base, "config")
-            # Map badge type to CSS node color variable
-            color_map = {
-                "java": "var(--node-java)", "xml": "var(--node-xml)",
-                "beanshell": "var(--node-beanshell)", "config": "var(--node-config)",
-                "docs": "var(--node-docs)", "tokens": "var(--node-tokens)",
-            }
-            icon_color = color_map.get(badge_type, "var(--accent)")
+            display = escape(cat_name)
+            # Use grouped URL if available, otherwise construct from name
+            cat_url = escape(cat_data.get("url", f"/categories/{cat_name.lower()}/")) if isinstance(cat_data, dict) else f"/categories/{cat_name.lower()}/"
+            # Use grouped color if available
+            color_var = cat_data.get("color", "node-config") if isinstance(cat_data, dict) else "node-config"
+            icon_color = f"var(--{color_var})" if not color_var.startswith("var(") else color_var
             parts.append(
-                f'<a href="/categories/{cat_url}/" class="card">'
+                f'<a href="{cat_url}" class="card">'
                 f'<div class="card__header">'
                 f'<span class="card__icon" style="background:{icon_color}"></span>'
                 f'<span class="card__title">{display}</span>'

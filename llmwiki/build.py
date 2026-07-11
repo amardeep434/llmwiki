@@ -159,9 +159,12 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         key=lambda x: x["in_degree"],
         reverse=True,
     )
-    cat_summary = {cat: {"count": len(pgs)} for cat, pgs in categories.items()}
+
+    # Group 250+ sub-categories into logical dashboard groups
+    dashboard_groups = _group_categories_for_dashboard(categories)
+
     dashboard_html = render_dashboard(
-        graph["stats"], [], cat_summary, top_pages, **theme_kwargs,
+        graph["stats"], [], dashboard_groups, top_pages, **theme_kwargs,
     )
     (site_dir / "index.html").write_text(dashboard_html, encoding="utf-8")
 
@@ -302,3 +305,58 @@ def _load_build_history(path: Path) -> list:
         except (json.JSONDecodeError, OSError):
             pass
     return []
+
+
+# Mapping of top-level category segments to logical dashboard groups
+_DASHBOARD_GROUP_MAP = {
+    "rule": ("Rules", "node-xml"),
+    "workflow": ("Workflows", "node-xml"),
+    "emailtemplate": ("Email Templates", "node-config"),
+    "taskdefinition": ("Task Definitions", "node-config"),
+    "form": ("Forms", "node-config"),
+    "application": ("Applications", "node-config"),
+    "custom": ("Custom Objects", "node-config"),
+    "certificationdefinition": ("Certifications", "node-config"),
+    "correlationconfig": ("Correlation Config", "node-config"),
+    "dynamicscope": ("Dynamic Scopes", "node-config"),
+    "identitytrigger": ("Identity Triggers", "node-config"),
+    "quicklink": ("Quick Links", "node-config"),
+    "workgroup": ("Workgroups", "node-config"),
+    "requestdefinition": ("Request Definitions", "node-config"),
+    "objectconfig": ("Object Config", "node-config"),
+    "configuration": ("Configuration", "node-config"),
+    "ssf_features": ("SSF Features", "node-config"),
+    "ssf_frameworks": ("SSF Frameworks", "node-config"),
+    "ssf_tools": ("SSF Tools", "node-config"),
+    "beanshell": ("BeanShell Scripts", "node-beanshell"),
+    "com": ("Java Source", "node-java"),
+    "sailpoint": ("SailPoint SDK", "node-java"),
+    "bsh": ("BeanShell Engine", "node-java"),
+    "connector-guides": ("Connector Guides", "node-docs"),
+    "iiq-docs": ("IIQ Documentation", "node-docs"),
+    "docs": ("Project Docs", "node-docs"),
+    "config": ("Config Files", "node-config"),
+    "tokens": ("Token Registry", "node-tokens"),
+    "xml": ("XML Config", "node-xml"),
+}
+
+
+def _group_categories_for_dashboard(
+    categories: dict[str, list[dict]],
+) -> dict[str, dict]:
+    """Group 250+ sub-categories into ~15 logical dashboard groups.
+
+    Returns {display_name: {"count": N, "color": css_var, "url": first_matching_category_url}}
+    """
+    groups: dict[str, dict] = {}
+
+    for cat, pages_list in categories.items():
+        top = cat.split("/")[0].lower() if "/" in cat else cat.lower()
+        display, color = _DASHBOARD_GROUP_MAP.get(top, (top.replace("-", " ").title(), "node-config"))
+
+        if display not in groups:
+            groups[display] = {"count": 0, "color": color, "url": f"/categories/{cat.lower()}/"}
+        groups[display]["count"] += len(pages_list)
+
+    # Sort by count descending
+    return dict(sorted(groups.items(), key=lambda x: x[1]["count"], reverse=True))
