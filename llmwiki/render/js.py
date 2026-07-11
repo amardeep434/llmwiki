@@ -548,9 +548,98 @@ function renderNeuralGraph(container, graph) {
     return;
   }
 
+  /* Use content type columns from embedded data, or fall back to category grouping */
+  var ctColumns = window.LLMWIKI_CT_COLUMNS;
+
+  /* Content type detection matching Python _detect_content_type */
+  var SOURCE_LANGS = {java:1,python:1,javascript:1,typescript:1,go:1,rust:1,csharp:1,ruby:1,kotlin:1,swift:1,scala:1,php:1,c:1,cpp:1};
+  var XML_EXTS = {".xml":1,".xsl":1,".xsd":1,".wsdl":1};
+  var DOC_EXTS = {".md":1,".mdx":1,".rst":1};
+  var CFG_LANGS = {properties:1,json:1,yaml:1,toml:1,ini:1,cfg:1};
+  var CFG_EXTS = {".properties":1,".json":1,".yaml":1,".yml":1,".toml":1,".ini":1,".env":1,".cfg":1};
+
+  function detectContentType(n) {
+    var lang = (n.language || "").toLowerCase();
+    var cat = (n.type || "").toLowerCase();
+    var tags = n.tags || [];
+    var src = n.source_path || n.id || "";
+    var dotIdx = src.lastIndexOf(".");
+    var ext = dotIdx >= 0 ? src.substring(dotIdx).toLowerCase() : "";
+    if (cat.indexOf("beanshell") === 0 || tags.indexOf("beanshell") >= 0) return "Inline Scripts";
+    if (cat === "tokens") return "Token Registry";
+    if (tags.indexOf("pdf") >= 0 || ext === ".pdf") return "Documentation";
+    if (SOURCE_LANGS[lang]) return "Source Code";
+    if (lang === "xml" || XML_EXTS[ext]) return "XML / Markup";
+    if (DOC_EXTS[ext]) return "Documentation";
+    if (CFG_LANGS[lang] || CFG_EXTS[ext]) return "Configuration";
+    return "Other";
+  }
+
+  /* Color mapping for content type CSS variables */
+  var CT_COLOR_MAP = {
+    "node-java": "#f59e0b", "node-xml": "#6366f1", "node-beanshell": "#ec4899",
+    "node-config": "#8b5cf6", "node-tokens": "#f97316", "node-docs": "#10b981"
+  };
+
+  /* Build columns from content type groups or detect automatically */
+  var columns = [];
+  if (ctColumns && ctColumns.length > 0) {
+    ctColumns.forEach(function(col) {
+      columns.push({
+        name: col.name, icon: col.icon,
+        expectedCount: col.count,
+        color: CT_COLOR_MAP[col.color] || "#71717a",
+        nodes: []
+      });
+    });
+  } else {
+    /* Fallback: auto-detect columns */
+    var autoGroups = {};
+    nodes.forEach(function(n) {
+      var ct = detectContentType(n);
+      if (!autoGroups[ct]) autoGroups[ct] = { name: ct, nodes: [], color: "#71717a" };
+      autoGroups[ct].nodes.push(n);
+    });
+    var sorted = Object.keys(autoGroups).sort(function(a, b) {
+      return autoGroups[b].nodes.length - autoGroups[a].nodes.length;
+    });
+    sorted.forEach(function(k) { columns.push(autoGroups[k]); });
+  }
+
+  /* Assign nodes to columns */
+  nodes.forEach(function(n) {
+    var ct = detectContentType(n);
+    var placed = false;
+    for (var i = 0; i < columns.length; i++) {
+      if (columns[i].name === ct) { columns[i].nodes.push(n); placed = true; break; }
+    }
+    if (!placed) {
+      /* Find or create Other column */
+      var otherCol = null;
+      for (var j = 0; j < columns.length; j++) {
+        if (columns[j].name === "Other") { otherCol = columns[j]; break; }
+      }
+      if (!otherCol) {
+        otherCol = { name: "Other", icon: "\uD83D\uDCE6", color: "#71717a", nodes: [] };
+        columns.push(otherCol);
+      }
+      otherCol.nodes.push(n);
+    }
+  });
+
+  /* Sort nodes in each column by importance */
+  columns.forEach(function(col) {
+    col.nodes.sort(function(a, b) { return (b.importance || 0) - (a.importance || 0); });
+  });
+
+  /* Remove empty columns */
+  columns = columns.filter(function(col) { return col.nodes.length > 0; });
+
+  /* Canvas setup — fill full container height */
   var canvas = document.createElement("canvas");
-  var w = container.clientWidth || 900;
-  var h = 520;
+  var w = container.clientWidth || 1200;
+  var h = container.clientHeight || 700;
+  if (h < 400) h = 700;
   var dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -562,70 +651,59 @@ function renderNeuralGraph(container, graph) {
   var ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
 
-  var CATEGORY_COLORS = {
-    "rule": "#ef4444", "beanshell": "#ec4899", "workflow": "#6366f1",
-    "application": "#10b981", "task": "#f59e0b", "java": "#f59e0b",
-    "config": "#8b5cf6", "custom": "#8b5cf6", "report": "#ef4444",
-    "connector-guides": "#10b981", "iiq-docs": "#f59e0b", "docs": "#10b981",
-    "tokens": "#f97316", "xml": "#6366f1"
-  };
+  /* Layout: columns across the width */
+  var marginX = 80, marginTop = 85, marginBottom = 30;
+  var colSpacing = columns.length > 1 ? (w - 2 * marginX) / (columns.length - 1) : 0;
+  var usableH = h - marginTop - marginBottom;
+  var maxNodesPerCol = Math.max(30, Math.floor(usableH / 18));
 
-  /* Group nodes by top-level category */
-  var groups = {};
-  nodes.forEach(function(n) {
-    var cat = (n.type || "other").split("/")[0].toLowerCase();
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(n);
-  });
-
-  /* Sort groups by size descending, take top 6 */
-  var sortedGroups = Object.keys(groups).sort(function(a, b) {
-    return groups[b].length - groups[a].length;
-  }).slice(0, 6);
-
-  /* Assign column positions */
-  var margin = 70;
-  var colSpacing = (w - 2 * margin) / Math.max(sortedGroups.length - 1, 1);
   var nodePositions = {};
+  columns.forEach(function(col, ci) {
+    var colX = columns.length > 1 ? marginX + ci * colSpacing : w / 2;
+    var showCount = Math.min(col.nodes.length, maxNodesPerCol);
+    var ySpacing = Math.min(usableH / Math.max(showCount, 1), 28);
+    var startY = marginTop + (usableH - showCount * ySpacing) / 2;
 
-  sortedGroups.forEach(function(cat, ci) {
-    var colX = margin + ci * colSpacing;
-    var catNodes = groups[cat];
-    catNodes.sort(function(a, b) { return (b.importance || 0) - (a.importance || 0); });
-    var maxShow = Math.min(catNodes.length, 18);
-    var ySpacing = Math.min((h - 100) / maxShow, 38);
-    var startY = 80;
-
-    for (var ni = 0; ni < maxShow; ni++) {
-      var n = catNodes[ni];
-      var jitter = (Math.sin(ni * 7 + ci * 3) * 8);
+    for (var ni = 0; ni < showCount; ni++) {
+      var n = col.nodes[ni];
+      var jitter = Math.sin(ni * 7 + ci * 3) * 10;
+      var imp = n.importance || 0;
       nodePositions[n.id] = {
         x: colX + jitter,
         y: startY + ni * ySpacing,
         node: n,
-        cat: cat,
-        color: CATEGORY_COLORS[cat] || "#71717a",
-        r: 3 + (n.importance || 0) * 6
+        colName: col.name,
+        color: col.color,
+        r: 2.5 + imp * 8
       };
     }
   });
 
   /* Draw cosmic background */
+  var isDark = document.documentElement.getAttribute("data-theme") !== "light";
+  var bgFrom = isDark ? "#0e0e1a" : "#f5f5f5";
+  var bgTo = isDark ? "#06060f" : "#e8e8e8";
+  var labelBg = isDark ? "#06060f" : "#e0e0e0";
+  var labelAlpha = isDark ? 0.7 : 0.5;
+  var edgeBaseAlpha = isDark ? 0.06 : 0.1;
+  var fontClr = isDark ? "#e4e4e7" : "#27272a";
+
   var bgGrad = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w * 0.6);
-  bgGrad.addColorStop(0, "#0e0e1a");
-  bgGrad.addColorStop(1, "#06060f");
+  bgGrad.addColorStop(0, bgFrom);
+  bgGrad.addColorStop(1, bgTo);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, w, h);
 
-  /* Draw edges as bezier curves */
-  var posIds = Object.keys(nodePositions);
+  /* Draw edges as bezier curves — show ALL edges that connect visible nodes */
   var posIdSet = {};
-  posIds.forEach(function(id) { posIdSet[id] = true; });
+  Object.keys(nodePositions).forEach(function(id) { posIdSet[id] = true; });
 
+  var edgeCount = 0;
   edges.forEach(function(e) {
     var pa = nodePositions[e.from];
     var pb = nodePositions[e.to];
     if (!pa || !pb) return;
+    edgeCount++;
     ctx.beginPath();
     var cpx1 = pa.x + (pb.x - pa.x) * 0.4;
     var cpx2 = pa.x + (pb.x - pa.x) * 0.6;
@@ -633,27 +711,28 @@ function renderNeuralGraph(container, graph) {
     ctx.bezierCurveTo(cpx1, pa.y, cpx2, pb.y, pb.x, pb.y);
     ctx.strokeStyle = pa.color;
     var imp = Math.max(pa.node.importance || 0, pb.node.importance || 0);
-    ctx.globalAlpha = 0.08 + imp * 0.2;
-    ctx.lineWidth = 0.4 + imp * 0.6;
+    ctx.globalAlpha = edgeBaseAlpha + imp * 0.25;
+    ctx.lineWidth = 0.3 + imp * 0.8;
     ctx.stroke();
   });
   ctx.globalAlpha = 1;
 
   /* Draw column labels */
-  sortedGroups.forEach(function(cat, ci) {
-    var colX = margin + ci * colSpacing;
-    var label = cat.toUpperCase() + " \u00b7 " + groups[cat].length;
-    var color = CATEGORY_COLORS[cat] || "#71717a";
+  var fontSans = "sans-serif";
+  try { fontSans = getComputedStyle(document.documentElement).getPropertyValue("--font-sans") || "sans-serif"; } catch(e) {}
 
-    /* Label background */
-    ctx.font = "bold 9px " + getComputedStyle(document.documentElement).getPropertyValue("--font-sans");
+  columns.forEach(function(col, ci) {
+    var colX = columns.length > 1 ? marginX + ci * colSpacing : w / 2;
+    var icon = col.icon || "";
+    var label = icon + " " + col.name + " \u00b7 " + col.nodes.length;
+
+    ctx.font = "bold 10px " + fontSans;
     var tw = ctx.measureText(label).width;
-    ctx.fillStyle = "#06060f";
-    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = labelBg;
+    ctx.globalAlpha = labelAlpha;
+    var rx = colX - tw/2 - 10, ry = 42, rw = tw + 20, rh = 22, rr = 5;
     ctx.beginPath();
-    var rx = colX - tw/2 - 8, ry = 46, rw = tw + 16, rh = 18, rr = 4;
-    ctx.moveTo(rx + rr, ry);
-    ctx.lineTo(rx + rw - rr, ry);
+    ctx.moveTo(rx + rr, ry); ctx.lineTo(rx + rw - rr, ry);
     ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + rr);
     ctx.lineTo(rx + rw, ry + rh - rr);
     ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rr, ry + rh);
@@ -662,45 +741,51 @@ function renderNeuralGraph(container, graph) {
     ctx.lineTo(rx, ry + rr);
     ctx.quadraticCurveTo(rx, ry, rx + rr, ry);
     ctx.fill();
-    ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = col.color;
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    /* Label text */
-    ctx.fillStyle = color;
+    ctx.fillStyle = col.color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(label, colX, 55);
+    ctx.fillText(label, colX, 53);
   });
 
   /* Draw nodes with glow */
   var clickTargets = [];
-  posIds.forEach(function(id) {
+  Object.keys(nodePositions).forEach(function(id) {
     var p = nodePositions[id];
     var imp = p.node.importance || 0;
 
-    /* Glow for important nodes */
-    if (imp > 0.4) {
+    if (imp > 0.3) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r * 2.5, 0, 2 * Math.PI);
       ctx.fillStyle = p.color;
-      ctx.globalAlpha = 0.12;
+      ctx.globalAlpha = 0.1;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
 
-    /* Node dot */
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
     ctx.fillStyle = p.color;
-    ctx.globalAlpha = 0.5 + imp * 0.45;
+    ctx.globalAlpha = 0.4 + imp * 0.55;
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    clickTargets.push({ id: id, x: p.x, y: p.y, r: p.r, type: p.cat, title: p.node.title });
+    clickTargets.push({ id: id, x: p.x, y: p.y, r: p.r, type: p.colName, title: p.node.title, cat: (p.node.type || "uncategorized").toLowerCase() });
   });
+
+  /* Edge count label in corner */
+  ctx.font = "11px " + fontSans;
+  ctx.fillStyle = fontClr;
+  ctx.globalAlpha = 0.4;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(edgeCount + " edges rendered", w - 16, h - 10);
+  ctx.globalAlpha = 1;
 
   /* Click to navigate */
   canvas.addEventListener("click", function(evt) {
@@ -712,7 +797,7 @@ function renderNeuralGraph(container, graph) {
       var dx = mx - ct.x, dy = my - ct.y;
       if (dx*dx + dy*dy <= (ct.r + 6) * (ct.r + 6)) {
         var slug = ct.id.split("/").pop();
-        var cat = ct.type || "uncategorized";
+        var cat = ct.cat;
         window.location.href = "/categories/" + cat + "/" + slug + ".html";
         break;
       }
@@ -721,7 +806,7 @@ function renderNeuralGraph(container, graph) {
 
   /* Hover tooltip */
   var tooltip = document.createElement("div");
-  tooltip.style.cssText = "position:absolute;padding:4px 8px;background:var(--surface-1);border:1px solid var(--hairline);border-radius:4px;font-size:11px;color:var(--ink);pointer-events:none;display:none;z-index:10;white-space:nowrap;";
+  tooltip.style.cssText = "position:absolute;padding:6px 10px;background:var(--surface-1);border:1px solid var(--hairline);border-radius:6px;font-size:12px;color:var(--ink);pointer-events:none;display:none;z-index:10;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3);";
   container.style.position = "relative";
   container.appendChild(tooltip);
 
@@ -734,10 +819,10 @@ function renderNeuralGraph(container, graph) {
       var ct = clickTargets[i];
       var dx = mx - ct.x, dy = my - ct.y;
       if (dx*dx + dy*dy <= (ct.r + 6) * (ct.r + 6)) {
-        tooltip.textContent = ct.title || ct.id;
+        tooltip.textContent = (ct.title || ct.id) + " \u2014 " + ct.type;
         tooltip.style.display = "block";
-        tooltip.style.left = (evt.clientX - rect.left + 12) + "px";
-        tooltip.style.top = (evt.clientY - rect.top - 8) + "px";
+        tooltip.style.left = (evt.clientX - rect.left + 14) + "px";
+        tooltip.style.top = (evt.clientY - rect.top - 10) + "px";
         canvas.style.cursor = "pointer";
         found = true;
         break;

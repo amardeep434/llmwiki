@@ -231,6 +231,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
                 json.dumps(page_json, indent=2), encoding="utf-8"
             )
 
+    # 10b. Generate index pages for subcategory parent directories
+    # Sidebar links may point to parent prefixes (e.g. com/vf) that don't
+    # have their own category entry. Collect all pages under each prefix
+    # and generate an index.html so links don't show file-browser listings.
+    _generate_subcategory_indexes(
+        categories, cat_dir, content_type_groups, graph, theme_kwargs,
+    )
+
     # 11. Build search index → search-index.json
     search_index = _build_search_index(pages, categories)
     (site_dir / "search-index.json").write_text(
@@ -251,7 +259,9 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         })
 
     # 13. Generate graph.html (interactive knowledge graph)
-    graph_html = render_graph_page(graph, **theme_kwargs)
+    graph_html = render_graph_page(graph,
+                                   content_type_groups=content_type_groups,
+                                   **theme_kwargs)
     (site_dir / "graph.html").write_text(graph_html, encoding="utf-8")
 
     # 14. Generate changelog.html and update build-history.json
@@ -326,6 +336,54 @@ def _load_build_history(path: Path) -> list:
         except (json.JSONDecodeError, OSError):
             pass
     return []
+
+
+def _generate_subcategory_indexes(
+    categories: dict,
+    cat_dir: Path,
+    content_type_groups: dict,
+    graph: dict,
+    theme_kwargs: dict,
+) -> None:
+    """Generate index.html for subcategory parent paths that lack one.
+
+    The sidebar links to truncated sub-category paths (e.g. ``com/vf``)
+    which may not correspond to an actual category.  For every such
+    prefix that has no ``index.html``, collect all pages whose category
+    starts with that prefix and render a category index page so the
+    browser shows a real page instead of a directory listing.
+    """
+    # Gather all subcategory prefixes from content type groups
+    prefixes: set[str] = set()
+    for ct_data in content_type_groups.values():
+        for sc_name in ct_data.get("subcategories", {}):
+            prefixes.add(sc_name.lower())
+
+    existing_cats = {c.lower() for c in categories}
+
+    for prefix in prefixes:
+        if prefix in existing_cats:
+            continue  # already has a proper index.html
+        prefix_path = cat_dir / prefix
+        if (prefix_path / "index.html").exists():
+            continue  # already generated
+
+        # Collect all pages whose category starts with this prefix
+        merged_pages: list[dict] = []
+        for cat, cat_pages in categories.items():
+            if cat.lower().startswith(prefix + "/") or cat.lower() == prefix:
+                merged_pages.extend(cat_pages)
+
+        if not merged_pages:
+            continue
+
+        prefix_path.mkdir(parents=True, exist_ok=True)
+        idx_html = render_category_index(
+            prefix, merged_pages,
+            clusters=graph.get("clusters", []),
+            **theme_kwargs,
+        )
+        (prefix_path / "index.html").write_text(idx_html, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +470,7 @@ def _build_content_type_groups(pages: dict, categories: dict) -> dict:
         if subcat not in groups[ct]["subcategories"]:
             groups[ct]["subcategories"][subcat] = {
                 "count": 0,
-                "url": f"/categories/{cat.lower()}/",
+                "url": f"/categories/{subcat.lower()}/",
             }
         groups[ct]["subcategories"][subcat]["count"] += 1
 

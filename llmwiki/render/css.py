@@ -111,14 +111,23 @@ a:hover { color: var(--accent-hover); }
 
 /* ─── Sidebar Content Types ─── */
 .sidebar__ct-group { margin: 0; }
-.sidebar__ct-group > summary { list-style: none; }
+.sidebar__ct-group > summary { list-style: none; cursor: pointer; user-select: none; }
 .sidebar__ct-group > summary::-webkit-details-marker { display: none; }
 .sidebar__ct-group > summary::marker { display: none; content: ""; }
-.sidebar__ct-tier1 { font-weight: 500; }
-.sidebar__ct-tier1 .sidebar__item-icon { font-size: 14px; width: 18px; }
-.sidebar__ct-tier2 { padding-left: 28px; font-size: 12px; }
+.sidebar__ct-tier1 { font-weight: 500; position: relative; }
+.sidebar__ct-tier1 .sidebar__item-icon { font-size: 15px; width: 20px; text-align: center; }
+.sidebar__ct-group > summary.sidebar__ct-tier1::after {
+  content: "\25B8"; font-size: 10px; color: var(--ink-faint);
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  transition: transform 200ms ease;
+}
+.sidebar__ct-group[open] > .sidebar__ct-tier1::after { transform: translateY(-50%) rotate(90deg); }
+.sidebar__ct-group > .sidebar__ct-tier2,
+.sidebar__ct-group > .sidebar__ct-more { overflow: hidden; }
+.sidebar__ct-tier2 { padding-left: 30px; font-size: 12px; }
+.sidebar__ct-tier2 .sidebar__item-icon { font-size: 9px; }
 .sidebar__ct-more { margin: 0; }
-.sidebar__ct-more > summary { list-style: none; }
+.sidebar__ct-more > summary { list-style: none; cursor: pointer; user-select: none; }
 .sidebar__ct-more > summary::-webkit-details-marker { display: none; }
 .sidebar__ct-more > summary::marker { display: none; content: ""; }
 

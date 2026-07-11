@@ -1245,6 +1245,7 @@ if (container && typeof vis !== "undefined") {
 def render_graph_page(
     graph: dict,
     *,
+    content_type_groups: dict | None = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -1258,15 +1259,27 @@ def render_graph_page(
     n_edges = stats.get("total_edges", 0)
     n_clusters = stats.get("total_clusters", 0)
 
-    # Legend items
-    legend_types = [
-        ("Java", "var(--node-java)"),
-        ("XML/Workflow", "var(--node-xml)"),
-        ("BeanShell", "var(--node-beanshell)"),
-        ("Config", "var(--node-config)"),
-        ("Token", "var(--node-tokens)"),
-        ("Docs", "var(--node-docs)"),
-    ]
+    # Legend items — derived from content type groups when available
+    if content_type_groups:
+        _color_to_css = {
+            "node-java": "var(--node-java)", "node-xml": "var(--node-xml)",
+            "node-beanshell": "var(--node-beanshell)", "node-config": "var(--node-config)",
+            "node-tokens": "var(--node-tokens)", "node-docs": "var(--node-docs)",
+        }
+        legend_types = []
+        for ct_name, ct_data in content_type_groups.items():
+            color_var = ct_data.get("color", "node-config")
+            css_val = _color_to_css.get(color_var, f"var(--{color_var})")
+            legend_types.append((ct_name, css_val))
+    else:
+        legend_types = [
+            ("Java", "var(--node-java)"),
+            ("XML/Workflow", "var(--node-xml)"),
+            ("BeanShell", "var(--node-beanshell)"),
+            ("Config", "var(--node-config)"),
+            ("Token", "var(--node-tokens)"),
+            ("Docs", "var(--node-docs)"),
+        ]
     legend_html = ""
     for lbl, color in legend_types:
         legend_html += (
@@ -1274,6 +1287,19 @@ def render_graph_page(
             f'<span class="graph-full__legend-dot" style="background:{color}"></span>'
             f'<span>{lbl}</span></div>\n'
         )
+
+    # Build content type column data for the neural graph JS
+    ct_columns_json = "null"
+    if content_type_groups:
+        ct_cols = []
+        for ct_name, ct_data in content_type_groups.items():
+            ct_cols.append({
+                "name": ct_name,
+                "icon": ct_data.get("icon", ""),
+                "count": ct_data.get("count", 0),
+                "color": ct_data.get("color", "node-config"),
+            })
+        ct_columns_json = json.dumps(ct_cols)
 
     parts = [
         page_head("Knowledge Graph", "Interactive knowledge graph visualization",
@@ -1318,7 +1344,10 @@ def render_graph_page(
         f'<div class="graph-full__legend">\n{legend_html}</div>\n'
         '</div>\n',
         # Neural graph container (hidden initially)
-        '<div id="graph-neural" class="neural-graph" style="display:none;height:calc(100vh - var(--topbar-height, 48px) - 60px);"></div>\n',
+        '<div id="graph-neural" class="neural-graph" '
+        'style="display:none;height:calc(100vh - var(--topbar-height, 48px) - 60px);"></div>\n',
+        # Content type column data for neural graph
+        f'<script>window.LLMWIKI_CT_COLUMNS={ct_columns_json};</script>\n',
         # vis-network CDN
         '<script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/'
         'umd/vis-network.min.js" crossorigin="anonymous"></script>\n',
