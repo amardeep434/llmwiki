@@ -75,9 +75,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         from_id = edge["from"]
         from_node = node_map.get(from_id)
         if from_node:
+            from_cat = from_node.get("type", "")
+            if not from_cat:
+                from_page = pages.get(from_id, {})
+                from_cat = from_page.get("category", "Other")
             backlinks.setdefault(to_id, []).append({
                 "title": from_node.get("title", from_id),
                 "url": page_urls.get(from_id, "#"),
+                "category": from_cat or "Other",
             })
 
     # 5. Enrich pages with importance scores, cluster IDs, and URLs
@@ -163,8 +168,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # Group 250+ sub-categories into logical dashboard groups
     dashboard_groups = _group_categories_for_dashboard(categories)
 
+    # Add last_build to stats for the 4th stats card
+    dash_stats = dict(graph["stats"])
+    dash_stats["last_build"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
     dashboard_html = render_dashboard(
-        graph["stats"], [], dashboard_groups, top_pages, **theme_kwargs,
+        dash_stats, [], dashboard_groups, top_pages,
+        clusters=graph.get("clusters", []),
+        **theme_kwargs,
     )
     (site_dir / "index.html").write_text(dashboard_html, encoding="utf-8")
 
@@ -183,16 +194,21 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         cat_path.mkdir(parents=True, exist_ok=True)
 
         # Category index page
-        idx_html = render_category_index(cat, cat_pages, **theme_kwargs)
+        idx_html = render_category_index(cat, cat_pages,
+                                         clusters=graph.get("clusters", []),
+                                         **theme_kwargs)
         (cat_path / "index.html").write_text(idx_html, encoding="utf-8")
 
         # Individual page details + JSON siblings
         for pdata in cat_pages:
             pid = pdata["id"]
             slug = pid.split("/")[-1] if "/" in pid else pid
+            current_url = f"/categories/{cat_lower}/{slug}.html"
 
             # Page detail HTML
             page_html = render_page_detail(pdata, backlinks.get(pid, []),
+                                           current_url=current_url,
+                                           clusters=graph.get("clusters", []),
                                            **theme_kwargs)
             (cat_path / f"{slug}.html").write_text(
                 page_html, encoding="utf-8"
@@ -252,12 +268,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     (site_dir / "changelog.html").write_text(changelog_html, encoding="utf-8")
 
     # 15. Return stats
-    return {
+    result = {
         "total_pages": len(pages),
         "total_categories": len(categories),
         "total_edges": graph["stats"]["total_edges"],
         "total_clusters": graph["stats"]["total_clusters"],
+        "last_build": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
+    return result
 
 
 def _page_url(page_id: str) -> str:
@@ -309,35 +327,35 @@ def _load_build_history(path: Path) -> list:
 
 # Mapping of top-level category segments to logical dashboard groups
 _DASHBOARD_GROUP_MAP = {
-    "rule": ("Rules", "node-xml"),
-    "workflow": ("Workflows", "node-xml"),
-    "emailtemplate": ("Email Templates", "node-config"),
-    "taskdefinition": ("Task Definitions", "node-config"),
-    "form": ("Forms", "node-config"),
-    "application": ("Applications", "node-config"),
-    "custom": ("Custom Objects", "node-config"),
-    "certificationdefinition": ("Certifications", "node-config"),
-    "correlationconfig": ("Correlation Config", "node-config"),
-    "dynamicscope": ("Dynamic Scopes", "node-config"),
-    "identitytrigger": ("Identity Triggers", "node-config"),
-    "quicklink": ("Quick Links", "node-config"),
-    "workgroup": ("Workgroups", "node-config"),
-    "requestdefinition": ("Request Definitions", "node-config"),
-    "objectconfig": ("Object Config", "node-config"),
-    "configuration": ("Configuration", "node-config"),
-    "ssf_features": ("SSF Features", "node-config"),
-    "ssf_frameworks": ("SSF Frameworks", "node-config"),
-    "ssf_tools": ("SSF Tools", "node-config"),
-    "beanshell": ("BeanShell Scripts", "node-beanshell"),
-    "com": ("Java Source", "node-java"),
-    "sailpoint": ("SailPoint SDK", "node-java"),
-    "bsh": ("BeanShell Engine", "node-java"),
-    "connector-guides": ("Connector Guides", "node-docs"),
-    "iiq-docs": ("IIQ Documentation", "node-docs"),
-    "docs": ("Project Docs", "node-docs"),
-    "config": ("Config Files", "node-config"),
-    "tokens": ("Token Registry", "node-tokens"),
-    "xml": ("XML Config", "node-xml"),
+    "rule": ("Rules", "node-xml", "Business logic rules and rule libraries"),
+    "workflow": ("Workflows", "node-xml", "Identity lifecycle and provisioning workflows"),
+    "emailtemplate": ("Email Templates", "node-config", "Notification and alert email templates"),
+    "taskdefinition": ("Task Definitions", "node-config", "Scheduled and on-demand task configurations"),
+    "form": ("Forms", "node-config", "UI form definitions for identity management"),
+    "application": ("Applications", "node-config", "Connector definitions for target systems"),
+    "custom": ("Custom Objects", "node-config", "Global configuration and custom object definitions"),
+    "certificationdefinition": ("Certifications", "node-config", "Access certification campaign definitions"),
+    "correlationconfig": ("Correlation Config", "node-config", "Identity correlation and matching rules"),
+    "dynamicscope": ("Dynamic Scopes", "node-config", "Dynamic population scoping definitions"),
+    "identitytrigger": ("Identity Triggers", "node-config", "Event-driven identity lifecycle triggers"),
+    "quicklink": ("Quick Links", "node-config", "Navigation quick link definitions"),
+    "workgroup": ("Workgroups", "node-config", "Workgroup and team definitions"),
+    "requestdefinition": ("Request Definitions", "node-config", "Access request type definitions"),
+    "objectconfig": ("Object Config", "node-config", "Object type configuration metadata"),
+    "configuration": ("Configuration", "node-config", "System-level configuration objects"),
+    "ssf_features": ("SSF Features", "node-config", "SailPoint Services Standard features"),
+    "ssf_frameworks": ("SSF Frameworks", "node-config", "SailPoint Services Standard frameworks"),
+    "ssf_tools": ("SSF Tools", "node-config", "SailPoint Services Standard deployment tools"),
+    "beanshell": ("BeanShell Scripts", "node-beanshell", "Extracted inline scripts from workflows and rules"),
+    "com": ("Java Source", "node-java", "Core utility classes, tasks, reports, and integrations"),
+    "sailpoint": ("SailPoint SDK", "node-java", "SailPoint API and SDK classes"),
+    "bsh": ("BeanShell Engine", "node-java", "BeanShell scripting engine classes"),
+    "connector-guides": ("Connector Guides", "node-docs", "SailPoint connector configuration and setup guides"),
+    "iiq-docs": ("IIQ Documentation", "node-docs", "IdentityIQ 8.5 official documentation"),
+    "docs": ("Project Docs", "node-docs", "Project-level documentation and guides"),
+    "config": ("Config Files", "node-config", "General configuration file definitions"),
+    "tokens": ("Token Registry", "node-tokens", "Environment token definitions and mappings"),
+    "xml": ("XML Config", "node-xml", "XML-based configuration objects"),
 }
 
 
@@ -346,16 +364,19 @@ def _group_categories_for_dashboard(
 ) -> dict[str, dict]:
     """Group 250+ sub-categories into ~15 logical dashboard groups.
 
-    Returns {display_name: {"count": N, "color": css_var, "url": first_matching_category_url}}
+    Returns {display_name: {"count": N, "color": css_var, "url": first_matching_category_url, "description": str}}
     """
     groups: dict[str, dict] = {}
 
     for cat, pages_list in categories.items():
         top = cat.split("/")[0].lower() if "/" in cat else cat.lower()
-        display, color = _DASHBOARD_GROUP_MAP.get(top, (top.replace("-", " ").title(), "node-config"))
+        entry = _DASHBOARD_GROUP_MAP.get(top, (top.replace("-", " ").title(), "node-config", ""))
+        display = entry[0]
+        color = entry[1]
+        desc = entry[2] if len(entry) > 2 else ""
 
         if display not in groups:
-            groups[display] = {"count": 0, "color": color, "url": f"/categories/{cat.lower()}/"}
+            groups[display] = {"count": 0, "color": color, "url": f"/categories/{cat.lower()}/", "description": desc}
         groups[display]["count"] += len(pages_list)
 
     # Sort by count descending

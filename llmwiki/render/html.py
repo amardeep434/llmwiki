@@ -60,6 +60,111 @@ def _type_badge(category: str) -> str:
     return f'<span class="badge badge--{badge_type}">{escape(label)}</span>'
 
 
+# FIX 8: Improved type badge detection using language + category
+def _detect_type_badge(page_data: dict) -> str:
+    """Detect the correct type badge from page data (language + category)."""
+    lang = page_data.get("language", "")
+    cat = page_data.get("category", "").lower()
+    if lang == "java":
+        return "java"
+    if lang == "xml":
+        return "xml"
+    if "beanshell" in cat:
+        return "beanshell"
+    if "connector" in cat or "iiq-docs" in cat or "docs" in cat:
+        return "docs"
+    if lang == "" and any(x in cat for x in ["rule", "workflow", "form", "task"]):
+        return "xml"
+    return "config"
+
+
+def _detect_type_badge_html(page_data: dict) -> str:
+    """Return a type badge HTML span using improved detection."""
+    badge_type = _detect_type_badge(page_data)
+    label = _BADGE_LABELS.get(badge_type, badge_type.upper())
+    return f'<span class="badge badge--{badge_type}">{escape(label)}</span>'
+
+
+# FIX 9: Extract clean metadata from source path
+def _clean_source_display(source_path: str, language: str = "") -> dict:
+    """Extract clean display info from absolute source path."""
+    result = {}
+    if not source_path:
+        return result
+    # Extract package name for Java files
+    if language == "java" or source_path.endswith(".java"):
+        # e.g. /home/.../src/com/vf/core/utility/AccountUtil.java -> com.vf.core.utility
+        parts = source_path.replace("\\", "/").split("/")
+        # Find 'com' or 'src' boundary
+        for i, p in enumerate(parts):
+            if p in ("com", "org", "net", "bsh", "sailpoint"):
+                pkg_parts = parts[i:-1]  # exclude filename
+                result["package"] = ".".join(pkg_parts)
+                break
+        result["filename"] = parts[-1] if parts else source_path
+    elif language == "xml" or source_path.endswith(".xml"):
+        parts = source_path.replace("\\", "/").split("/")
+        # Find 'config' boundary
+        for i, p in enumerate(parts):
+            if p == "config":
+                result["config_path"] = "/".join(parts[i:])
+                break
+        if "config_path" not in result:
+            result["filename"] = parts[-1] if parts else source_path
+    else:
+        parts = source_path.replace("\\", "/").split("/")
+        result["filename"] = parts[-1] if parts else source_path
+    return result
+
+
+# FIX 14: Strip raw javadoc tags from descriptions
+def _clean_javadoc(body: str) -> str:
+    """Strip raw @param, @throws, @return tags from body text for cleaner display."""
+    # Remove @param lines
+    body = re.sub(r'^\s*@param\s+\S+\s*.*$', '', body, flags=re.MULTILINE)
+    # Remove @throws / @exception lines
+    body = re.sub(r'^\s*@(?:throws|exception)\s+\S+\s*.*$', '', body, flags=re.MULTILINE)
+    # Remove @return lines
+    body = re.sub(r'^\s*@return\s*.*$', '', body, flags=re.MULTILINE)
+    # Remove @see lines
+    body = re.sub(r'^\s*@see\s*.*$', '', body, flags=re.MULTILINE)
+    # Remove @since, @version, @author, @deprecated
+    body = re.sub(r'^\s*@(?:since|version|author|deprecated)\s*.*$', '', body, flags=re.MULTILINE)
+    # Collapse multiple blank lines
+    body = re.sub(r'\n{3,}', '\n\n', body)
+    return body.strip()
+
+
+# FIX 13: Render code blocks with header + copy button
+def _render_code_blocks(html_body: str) -> str:
+    """Replace <pre><code> blocks with styled code-block structure."""
+    def _replace_code_block(match):
+        attrs = match.group(1) or ""
+        code_content = match.group(2)
+        # Extract language from class attribute
+        lang_match = re.search(r'class="[^"]*language-(\w+)', attrs)
+        lang = lang_match.group(1) if lang_match else "text"
+        lang_display = lang.upper() if len(lang) <= 4 else lang.title()
+        return (
+            f'<div class="code-block">'
+            f'<div class="code-block__header">'
+            f'<span class="code-block__lang">{escape(lang_display)}</span>'
+            f'<button class="code-block__copy" onclick="'
+            f"navigator.clipboard.writeText(this.closest('.code-block')"
+            f".querySelector('code').textContent)"
+            f'">Copy</button>'
+            f'</div>'
+            f'<pre><code{attrs}>{code_content}</code></pre>'
+            f'</div>'
+        )
+    return re.sub(
+        r'<pre><code([^>]*)>(.*?)</code></pre>',
+        _replace_code_block,
+        html_body,
+        flags=re.DOTALL,
+    )
+
+
 # ===========================================================================
 # HEAD / FOOT
 # ===========================================================================
@@ -205,20 +310,67 @@ def nav_bar(active: str = "", color_options: list = None) -> str:
 # ===========================================================================
 
 
-def render_sidebar(categories: dict, current_category: str = "") -> str:
+def render_sidebar(categories: dict, current_category: str = "",
+                   current_url: str = "", clusters: list = None,
+                   total_pages: int = 0) -> str:
     """Generate left sidebar with collapsible category tree."""
+    # Calculate total pages if not provided
+    if not total_pages:
+        for cat_pages in categories.values():
+            if isinstance(cat_pages, list):
+                total_pages += len(cat_pages)
+            elif isinstance(cat_pages, dict):
+                total_pages += cat_pages.get("count", 0)
+
     parts = [
         '<aside class="sidebar">\n',
         '<div class="sidebar__section">\n',
         '<div class="sidebar__heading">Navigation</div>\n',
-        '<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
-        '<span>Dashboard</span></a>\n',
-        '<a href="/graph.html" class="sidebar__item"><span class="sidebar__item-icon">\u25C8</span>'
-        '<span>Full Graph</span></a>\n',
-        '</div>\n',
-        '<div class="sidebar__section">\n',
-        '<div class="sidebar__heading">Categories</div>\n',
     ]
+
+    # Dashboard link — FIX 12: active state
+    dash_active = " sidebar__item--active" if current_url == "/" else ""
+    parts.append(
+        f'<a href="/" class="sidebar__item{dash_active}"><span class="sidebar__item-icon">\u25C6</span>'
+        f'<span>Dashboard</span></a>\n'
+    )
+
+    # FIX 5: All Pages link
+    all_pages_active = " sidebar__item--active" if current_url == "/categories/" else ""
+    parts.append(
+        f'<a href="/categories/" class="sidebar__item{all_pages_active}">'
+        f'<span class="sidebar__item-icon">\u25A3</span>'
+        f'<span>All Pages ({total_pages})</span></a>\n'
+    )
+
+    # Graph link
+    graph_active = " sidebar__item--active" if current_url == "/graph.html" else ""
+    parts.append(
+        f'<a href="/graph.html" class="sidebar__item{graph_active}"><span class="sidebar__item-icon">\u25C8</span>'
+        f'<span>Full Graph</span></a>\n'
+    )
+    parts.append('</div>\n')
+
+    # FIX 4: Clusters section
+    if clusters:
+        parts.append('<div class="sidebar__section">\n')
+        parts.append('<div class="sidebar__heading">Clusters</div>\n')
+        for cluster in clusters[:15]:
+            cl_label = escape(cluster.get("label", f"Cluster {cluster.get('id', '?')}"))
+            cl_count = cluster.get("member_count", len(cluster.get("members", [])))
+            parts.append(
+                f'<div class="sidebar__item">'
+                f'<span class="sidebar__item-icon">\u25CB</span>'
+                f'<span>{cl_label}</span>'
+                f'<span class="sidebar__item-count">{cl_count}</span></div>\n'
+            )
+        parts.append('</div>\n')
+
+    # Categories section
+    parts.append(
+        '<div class="sidebar__section">\n'
+        '<div class="sidebar__heading">Categories</div>\n'
+    )
 
     sorted_cats = sorted(categories.items(), key=lambda x: x[0].lower())
     for cat_name, cat_pages in sorted_cats:
@@ -238,24 +390,28 @@ def render_sidebar(categories: dict, current_category: str = "") -> str:
             f'<span class="sidebar__item-count">{count}</span></a>\n'
         )
 
-        # Show nested items for active category
-        if is_active and isinstance(cat_pages, list):
-            parts.append('<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n')
-            for p in cat_pages[:10]:
-                p_title = escape(p.get("title", "?")[:30])
-                p_url = escape(p.get("url", "#"))
-                parts.append(
-                    f'<li><a class="sidebar__item" href="{p_url}" data-href="{p_url}">'
-                    f'<span class="sidebar__item-icon">\u00B7</span>'
-                    f'<span>{p_title}</span></a></li>\n'
-                )
-            if len(cat_pages) > 10:
-                parts.append(
-                    f'<li><a class="sidebar__item" href="/categories/{escape(cat_url)}/">'
-                    f'<span class="sidebar__item-icon">\u2026</span>'
-                    f'<span>{len(cat_pages) - 10} more</span></a></li>\n'
-                )
-            parts.append('</ul>\n</div>\n')
+        # FIX 11: Show nested tree items for categories (top 5 pages)
+        if isinstance(cat_pages, list) and (is_active or count <= 5):
+            show_pages = cat_pages[:5]
+            if show_pages:
+                parts.append('<div class="sidebar__nested-section">\n<ul class="sidebar__tree sidebar__tree--nested">\n')
+                for p in show_pages:
+                    p_title = escape(p.get("title", "?")[:30])
+                    p_url = p.get("url", "#")
+                    # FIX 12: active state for nested items
+                    nested_active = " sidebar__item--active" if current_url and current_url == p_url else ""
+                    parts.append(
+                        f'<li><a class="sidebar__item{nested_active}" href="{escape(p_url)}" data-href="{escape(p_url)}">'
+                        f'<span class="sidebar__item-icon">\u00B7</span>'
+                        f'<span>{p_title}</span></a></li>\n'
+                    )
+                if count > 5:
+                    parts.append(
+                        f'<li><a class="sidebar__item" href="/categories/{escape(cat_url)}/">'
+                        f'<span class="sidebar__item-icon">\u2026</span>'
+                        f'<span>{count - 5} more</span></a></li>\n'
+                    )
+                parts.append('</ul>\n</div>\n')
 
     parts.append('</div>\n</aside>\n')
     return "".join(parts)
@@ -336,6 +492,7 @@ def render_dashboard(
     categories: dict,
     top_pages: list,
     *,
+    clusters: list = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -347,11 +504,12 @@ def render_dashboard(
                   color_options=color_options),
         '<div class="shell">\n',
         _topbar("home", color_options),
-        render_sidebar(categories),
+        render_sidebar(categories, clusters=clusters or [],
+                       total_pages=stats.get("total_pages", 0)),
         '<main class="main">\n',
     ]
 
-    # Stats strip
+    # Stats strip — FIX 2: 4th card (Last Build)
     total_pages = stats.get("total_pages", 0)
     total_edges = stats.get("total_edges", 0)
     total_clusters = stats.get("total_clusters", 0)
@@ -371,9 +529,17 @@ def render_dashboard(
             f'<span class="stats-strip__label">{label}</span>'
             f'</div>\n'
         )
+    # 4th stats card: Last Build
+    parts.append('<div class="stats-strip__sep"></div>\n')
+    parts.append(
+        '<div class="stats-strip__item">'
+        '<span class="stats-strip__value">Just now</span>'
+        '<span class="stats-strip__label">Last build</span>'
+        '</div>\n'
+    )
     parts.append('</div>\n')
 
-    # Recent changes feed
+    # FIX 1: Recent changes feed (always render section)
     if recent_changes:
         parts.append('<div class="section">\n')
         parts.append(
@@ -389,18 +555,38 @@ def render_dashboard(
             c_type = change.get("type", "config")
             badge_cls = _TYPE_BADGE_MAP.get(c_type.split("/")[0].lower(), "config") if c_type else "config"
             badge_label = _BADGE_LABELS.get(badge_cls, badge_cls.upper())
-            is_new = change.get("is_new", False)
-            dot_cls = "feed__badge--new" if is_new else "feed__badge--updated"
+            action = change.get("action", "updated")
+            if action == "added":
+                dot_cls = "feed__badge--new"
+            elif action == "removed":
+                dot_cls = "feed__badge--removed"
+            else:
+                dot_cls = "feed__badge--updated"
             c_time = escape(change.get("time_ago", ""))
             parts.append(
                 f'<a href="{c_url}" class="feed__item">'
                 f'<span class="feed__badge {dot_cls}"></span>'
-                f'<span class="feed__title">{c_title}</span>'
                 f'<span class="feed__type feed__type--{badge_cls}">{badge_label}</span>'
+                f'<span class="feed__title">{c_title}</span>'
                 f'<span class="feed__meta">{c_time}</span>'
                 f'</a>\n'
             )
         parts.append('</div>\n</div>\n')
+    else:
+        # Empty state for recent changes
+        parts.append('<div class="section">\n')
+        parts.append(
+            '<div class="section__header">'
+            '<h2 class="section__title">Recent Changes</h2>'
+            '</div>\n'
+        )
+        parts.append(
+            '<div class="feed feed--empty">'
+            '<span class="feed__empty-msg">'
+            'No recent changes \u2014 run <code>llmwiki ingest</code> to track changes.'
+            '</span></div>\n'
+        )
+        parts.append('</div>\n')
 
     # Category cards grid
     if categories:
@@ -432,13 +618,18 @@ def render_dashboard(
             # Use grouped color if available
             color_var = cat_data.get("color", "node-config") if isinstance(cat_data, dict) else "node-config"
             icon_color = f"var(--{color_var})" if not color_var.startswith("var(") else color_var
+            # FIX 3: card description
+            desc = ""
+            if isinstance(cat_data, dict):
+                desc = cat_data.get("description", "")
+            desc_html = f'<div class="card__desc">{escape(desc)}</div>' if desc else ""
             parts.append(
                 f'<a href="{cat_url}" class="card">'
                 f'<div class="card__header">'
                 f'<span class="card__icon" style="background:{icon_color}"></span>'
                 f'<span class="card__title">{display}</span>'
                 f'<span class="card__count">{count}</span>'
-                f'</div></a>\n'
+                f'</div>{desc_html}</a>\n'
             )
         parts.append('</div>\n</div>\n')
 
@@ -485,6 +676,7 @@ def render_dashboard(
 def render_category_index(
     category: str, pages: list,
     *,
+    clusters: list = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -500,7 +692,7 @@ def render_category_index(
                   color_options=color_options),
         '<div class="shell">\n',
         _topbar("categories", color_options),
-        render_sidebar(cat_summary, category),
+        render_sidebar(cat_summary, category, clusters=clusters or []),
         '<main class="main">\n',
         breadcrumbs([
             ("Home", "/"),
@@ -569,6 +761,8 @@ def render_category_index(
 def render_page_detail(
     page: dict, backlinks: list,
     *,
+    current_url: str = "",
+    clusters: list = None,
     themes_json: str = "",
     theme_labels_json: str = "",
     color_options: list = None,
@@ -592,6 +786,9 @@ def render_page_detail(
         '<div class="sidebar__heading">Navigation</div>\n'
         f'<a href="/" class="sidebar__item"><span class="sidebar__item-icon">\u25C6</span>'
         f'<span>Dashboard</span></a>\n'
+        f'<a href="/categories/" class="sidebar__item">'
+        f'<span class="sidebar__item-icon">\u25A3</span>'
+        f'<span>All Pages</span></a>\n'
         f'<a href="/categories/{escape(cat_url)}/" class="sidebar__item">'
         f'<span class="sidebar__item-icon">\u25B8</span>'
         f'<span>{cat_display}</span></a>\n'
@@ -600,8 +797,27 @@ def render_page_detail(
         f'<span class="sidebar__item-icon">\u00B7</span>'
         f'<span>{title[:30]}</span></li>\n'
         f'</ul>\n</div>\n'
-        '</div>\n'
-        '</aside>\n',
+        '</div>\n',
+    ]
+
+    # FIX 4: Clusters in detail sidebar
+    if clusters:
+        parts.append('<div class="sidebar__section">\n')
+        parts.append('<div class="sidebar__heading">Clusters</div>\n')
+        for cluster in clusters[:10]:
+            cl_label = escape(cluster.get("label", f"Cluster {cluster.get('id', '?')}"))
+            cl_count = cluster.get("member_count", len(cluster.get("members", [])))
+            parts.append(
+                f'<div class="sidebar__item">'
+                f'<span class="sidebar__item-icon">\u25CB</span>'
+                f'<span>{cl_label}</span>'
+                f'<span class="sidebar__item-count">{cl_count}</span></div>\n'
+            )
+        parts.append('</div>\n')
+
+    parts.append('</aside>\n')
+
+    parts.extend([
         '<main class="main">\n',
         breadcrumbs([
             ("Home", "/"),
@@ -610,11 +826,11 @@ def render_page_detail(
             (title, "#"),
         ]),
         '<div class="page-detail">\n',
-    ]
+    ])
 
-    # Metadata bar
+    # FIX 8: Use improved type badge detection
     parts.append('<div class="page-meta">\n')
-    badge_html = _type_badge(cat)
+    badge_html = _detect_type_badge_html(page)
     parts.append(badge_html)
     parts.append('<span class="page-meta__sep"></span>\n')
 
@@ -630,12 +846,36 @@ def render_page_detail(
         f'<span class="page-meta__item"><strong>Importance:</strong> {imp:.2f}</span>\n'
     )
 
+    # FIX 9: Clean metadata — no raw filesystem paths
     source = page.get("source_path", "")
     if source:
+        clean_info = _clean_source_display(source, lang)
+        if clean_info.get("package"):
+            parts.append(
+                f'<span class="page-meta__sep"></span>\n'
+                f'<span class="page-meta__item"><strong>Package:</strong> '
+                f'<code>{escape(clean_info["package"])}</code></span>\n'
+            )
+        elif clean_info.get("config_path"):
+            parts.append(
+                f'<span class="page-meta__sep"></span>\n'
+                f'<span class="page-meta__item"><strong>Path:</strong> '
+                f'<code>{escape(clean_info["config_path"])}</code></span>\n'
+            )
+        elif clean_info.get("filename"):
+            parts.append(
+                f'<span class="page-meta__sep"></span>\n'
+                f'<span class="page-meta__item"><strong>File:</strong> '
+                f'<code>{escape(clean_info["filename"])}</code></span>\n'
+            )
+
+    # Line count from body
+    body = page.get("body", "")
+    if body:
+        line_count = body.count('\n') + 1
         parts.append(
             f'<span class="page-meta__sep"></span>\n'
-            f'<span class="page-meta__item"><strong>Source:</strong> '
-            f'<code>{escape(source)}</code></span>\n'
+            f'<span class="page-meta__item"><strong>Lines:</strong> {line_count}</span>\n'
         )
 
     tags = page.get("tags", [])
@@ -646,10 +886,12 @@ def render_page_detail(
 
     parts.append('</div>\n')
 
-    # Body — markdown to HTML
-    body = page.get("body", "")
+    # Body — markdown to HTML with FIX 13 (code blocks) and FIX 14 (clean javadoc)
     if body:
-        parts.append(f'<div class="page-body">{md_to_html(body)}</div>\n')
+        cleaned_body = _clean_javadoc(body)
+        rendered_body = md_to_html(cleaned_body)
+        rendered_body = _render_code_blocks(rendered_body)
+        parts.append(f'<div class="page-body">{rendered_body}</div>\n')
 
     # Cross-references (outbound) — collapsible, grouped by type
     refs = page.get("references", [])
@@ -665,8 +907,9 @@ def render_page_detail(
             f'</div>\n'
         )
 
+    # FIX 10: auto-open cross-refs when ≤5 items
     if refs:
-        open_attr = " open" if len(refs) <= 8 else ""
+        open_attr = " open" if len(refs) <= 5 else ""
         parts.append(
             f'<details class="ref-section"{open_attr}>\n'
             f'<summary>Cross References '
@@ -674,7 +917,7 @@ def render_page_detail(
             f'color:var(--accent);">\u2192 {len(refs)} outgoing</span></summary>\n'
             f'<div class="ref-section__body">\n'
         )
-        # Group refs by type if they're dicts, otherwise list them flat
+        # FIX 6: Group refs by type
         if refs and isinstance(refs[0], dict):
             ref_groups: dict[str, list] = {}
             for r in refs:
@@ -699,20 +942,53 @@ def render_page_detail(
                     )
                 parts.append('</div>\n</details>\n')
         else:
-            # Flat list (refs are strings)
-            parts.append('<div class="ref-group__body">\n')
+            # Flat list (refs are strings) — group by detecting type from ID
+            ref_type_groups: dict[str, list[str]] = {}
             for r in refs:
-                ref_str = escape(str(r))
-                parts.append(
-                    f'<div class="ref-link">'
-                    f'<span class="ref-link__arrow">\u2192</span>'
-                    f'<span class="ref-link__name">{ref_str}</span></div>\n'
-                )
-            parts.append('</div>\n')
+                ref_str = str(r)
+                # Detect type from reference ID
+                ref_lower = ref_str.lower()
+                if ref_lower.startswith("com/") or ref_lower.startswith("com.") or ".java" in ref_lower:
+                    rtype = "java"
+                elif "beanshell" in ref_lower or "bsh" in ref_lower:
+                    rtype = "beanshell"
+                elif ref_lower.startswith("rule/") or ref_lower.startswith("workflow/"):
+                    rtype = ref_lower.split("/")[0]
+                else:
+                    rtype = "other"
+                ref_type_groups.setdefault(rtype, []).append(ref_str)
+
+            if len(ref_type_groups) > 1:
+                for rtype, ritems in ref_type_groups.items():
+                    badge = _type_badge(rtype)
+                    group_open = " open" if len(ritems) <= 5 else ""
+                    parts.append(
+                        f'<details class="ref-group"{group_open}>\n'
+                        f'<summary>{badge} {escape(_format_category_display(rtype))} '
+                        f'<span class="ref-group__count">{len(ritems)}</span></summary>\n'
+                        f'<div class="ref-group__body">\n'
+                    )
+                    for ref_str in ritems:
+                        parts.append(
+                            f'<div class="ref-link">'
+                            f'<span class="ref-link__arrow">\u2192</span>'
+                            f'<span class="ref-link__name">{escape(ref_str)}</span></div>\n'
+                        )
+                    parts.append('</div>\n</details>\n')
+            else:
+                parts.append('<div class="ref-group__body">\n')
+                for r in refs:
+                    ref_str = escape(str(r))
+                    parts.append(
+                        f'<div class="ref-link">'
+                        f'<span class="ref-link__arrow">\u2192</span>'
+                        f'<span class="ref-link__name">{ref_str}</span></div>\n'
+                    )
+                parts.append('</div>\n')
 
         parts.append('</div>\n</details>\n')
 
-    # Backlinks (inbound) — collapsible, grouped by category
+    # FIX 7: Backlinks (inbound) — grouped by category
     if backlinks:
         open_attr = " open" if len(backlinks) <= 5 else ""
         parts.append(
@@ -725,19 +1001,23 @@ def render_page_detail(
             f'<div class="ref-section__body">\n'
         )
 
-        # Group backlinks by their category/type
+        # Group backlinks by their category
         bl_groups: dict[str, list] = {}
         for bl in backlinks:
-            bl_cat = bl.get("category", bl.get("type", "Other"))
-            bl_groups.setdefault(bl_cat, []).append(bl)
+            bl_cat = bl.get("category", "Other")
+            if not bl_cat:
+                bl_cat = "Other"
+            # Use first path segment as group key
+            bl_group_key = bl_cat.split("/")[0] if "/" in bl_cat else bl_cat
+            bl_groups.setdefault(bl_group_key, []).append(bl)
 
-        for bl_cat, bl_items in bl_groups.items():
+        for bl_cat, bl_items in sorted(bl_groups.items()):
             badge = _type_badge(bl_cat)
             cat_display_bl = escape(_format_category_display(bl_cat))
             group_open = " open" if len(bl_items) <= 5 else ""
             parts.append(
-                f'<details class="ref-group"{group_open}>\n'
-                f'<summary>\u2190 Referenced by {badge} {cat_display_bl} '
+                f'<details class="backlinks__group ref-group"{group_open}>\n'
+                f'<summary>\u2190 {badge} {cat_display_bl} '
                 f'<span class="ref-group__count">{len(bl_items)}</span></summary>\n'
                 f'<div class="ref-group__body">\n'
             )
@@ -910,12 +1190,12 @@ def render_graph_page(
         '</div>\n'
         '</div>\n'
         '<div class="graph-full__canvas">\n'
-        '<div id="graph-container" style="width:100%;height:500px;"></div>\n'
+        '<div id="graph-container" style="width:100%;height:calc(100vh - var(--topbar-height, 48px) - 60px);"></div>\n'
         '</div>\n'
         f'<div class="graph-full__legend">\n{legend_html}</div>\n'
         '</div>\n',
         # Neural graph container (hidden initially)
-        '<div id="graph-neural" class="neural-graph" style="display:none"></div>\n',
+        '<div id="graph-neural" class="neural-graph" style="display:none;height:calc(100vh - var(--topbar-height, 48px) - 60px);"></div>\n',
         # vis-network CDN
         '<script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/'
         'umd/vis-network.min.js" crossorigin="anonymous"></script>\n',
