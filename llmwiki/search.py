@@ -27,11 +27,15 @@ def create_search_db(db_path: Path) -> None:
             importance_score REAL DEFAULT 0.0,
             cluster_id TEXT,
             language TEXT,
+            in_degree INTEGER DEFAULT 0,
+            url TEXT,
             metadata TEXT,
             created_at TEXT,
             updated_at TEXT
         )
     """)
+
+    _ensure_pages_columns(c)
 
     c.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
@@ -97,6 +101,24 @@ def create_search_db(db_path: Path) -> None:
     conn.close()
 
 
+def _ensure_pages_columns(cursor: sqlite3.Cursor) -> None:
+    """Backfill newer columns for existing databases."""
+    existing = {
+        row[1]: row[2]
+        for row in cursor.execute("PRAGMA table_info(pages)").fetchall()
+    }
+    required = {
+        "source_path": "TEXT",
+        "language": "TEXT",
+        "cluster_id": "TEXT",
+        "in_degree": "INTEGER DEFAULT 0",
+        "url": "TEXT",
+    }
+    for column, definition in required.items():
+        if column not in existing:
+            cursor.execute(f"ALTER TABLE pages ADD COLUMN {column} {definition}")
+
+
 def insert_page(db_path: Path, page: dict) -> None:
     """Insert or replace a page in the search database.
 
@@ -110,12 +132,17 @@ def insert_page(db_path: Path, page: dict) -> None:
     # reliably fire the AFTER DELETE trigger on all SQLite builds).
     c.execute("DELETE FROM pages WHERE id = ?", (page["id"],))
     c.execute("""
-        INSERT INTO pages (id, title, category, body_plain, tags, importance_score)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO pages (
+            id, title, category, source_path, body_plain, tags,
+            importance_score, cluster_id, language, in_degree, url
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         page["id"], page["title"], page.get("category", ""),
-        page.get("body_plain", ""), page.get("tags", "[]"),
+        page.get("source_path", ""), page.get("body_plain", ""), page.get("tags", "[]"),
         page.get("importance_score", 0.0),
+        page.get("cluster_id"), page.get("language", ""),
+        page.get("in_degree", 0), page.get("url", ""),
     ))
 
     conn.commit()

@@ -18,10 +18,14 @@ DEFAULT_EXCLUDE = [
 def create_default_config(name: str, source_path: str) -> dict:
     """Create a default llmwiki.json config."""
     return {
-        "project": {"name": name, "description": ""},
+        "project": {"name": name, "description": "", "base_url": "http://localhost:8765"},
         "sources": [{"path": source_path, "type": "auto", "exclude": list(DEFAULT_EXCLUDE)}],
         "pdf_sources": [],
-        "build": {"out_dir": "site", "incremental": True},
+        "build": {
+            "out_dir": "site",
+            "incremental": True,
+            "base_url": "http://localhost:8765",
+        },
         # "build.search_mode" reserved for future use (e.g. "fts5", "trigram")
         "serve": {"port": 8765, "host": "127.0.0.1"},
         "cross_references": {"enabled": True, "importance_iterations": 20, "cluster_min_size": 3},

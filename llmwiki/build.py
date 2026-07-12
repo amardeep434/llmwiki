@@ -225,13 +225,31 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             )
 
             # JSON sibling for AI agents
+            body_text = pdata.get("body", "")
+            truncated_body = body_text[:5000]
             page_json = {
                 "id": pid,
                 "title": pdata.get("title", ""),
                 "category": pdata.get("category", ""),
                 "tags": pdata.get("tags", []),
                 "importance": pdata.get("importance", 0),
-                "body_text": pdata.get("body", "")[:5000],
+                "url": pdata.get("url", current_url),
+                "source_path": pdata.get("source_path", ""),
+                "language": pdata.get("language", ""),
+                "cluster_id": pdata.get("cluster_id"),
+                "in_degree": pdata.get("in_degree", 0),
+                "backlinks": [
+                    {
+                        "title": bl.get("title", ""),
+                        "url": bl.get("url", ""),
+                        "category": bl.get("category", ""),
+                    }
+                    for bl in backlinks.get(pid, [])
+                ],
+                "methods": _extract_methods(pdata.get("tags", [])),
+                "body_length": len(body_text),
+                "is_truncated": len(body_text) > 5000,
+                "body_text": truncated_body,
                 "references": pdata.get("references", []),
             }
             (cat_path / f"{slug}.json").write_text(
@@ -254,6 +272,9 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     )
 
     # 12. Create and populate SQLite search database
+    # NOTE: body_plain is raw markdown with embedded source code, which is noisy
+    # for FTS. A future improvement would strip markdown/code fences and produce
+    # cleaner plain text for higher-quality full-text search results.
     db_path = site_dir / "llmwiki.db"
     create_search_db(db_path)
     for pid, pdata in pages.items():
@@ -261,9 +282,14 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             "id": pid,
             "title": pdata.get("title", ""),
             "category": pdata.get("category", ""),
+            "source_path": pdata.get("source_path", ""),
             "body_plain": pdata.get("body", ""),
             "tags": json.dumps(pdata.get("tags", [])),
             "importance_score": pdata.get("importance", 0),
+            "cluster_id": pdata.get("cluster_id"),
+            "language": pdata.get("language", ""),
+            "in_degree": pdata.get("in_degree", 0),
+            "url": pdata.get("url", ""),
         })
 
     # 13. Generate graph.html (interactive knowledge graph)
@@ -377,6 +403,15 @@ def _page_url(page_id: str) -> str:
         slug = parts[-1]
         return f"/categories/{cat}/{slug}.html"
     return f"/categories/{page_id.lower()}/{page_id}.html"
+
+
+def _extract_methods(tags: list[str]) -> list[str]:
+    """Extract method names from method:* tags."""
+    methods = []
+    for tag in tags or []:
+        if isinstance(tag, str) and tag.startswith("method:"):
+            methods.append(tag.split(":", 1)[1])
+    return methods
 
 
 def _build_search_index(pages: dict, categories: dict) -> dict:

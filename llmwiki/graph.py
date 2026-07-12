@@ -62,6 +62,9 @@ def build_graph(raw_dir: Path) -> dict:
             "out_degree": out_degree.get(pid, 0),
             "importance": round(scores.get(pid, 0.0), 4),
             "cluster_id": cluster_map.get(pid),
+            "url": _page_url(pid, pdata),
+            "language": pdata.get("language", ""),
+            "source_path": pdata.get("source_path", ""),
         })
 
     edge_dicts = [
@@ -202,3 +205,10 @@ def _parse_list(value) -> list[str]:
     if isinstance(value, str):
         return [v.strip() for v in value.strip("[]").split(",") if v.strip()]
     return []
+
+
+def _page_url(page_id: str, pdata: dict) -> str:
+    """Build the public URL for a page."""
+    category = (pdata.get("category", "") or "uncategorized").lower()
+    slug = page_id.split("/")[-1] if "/" in page_id else page_id
+    return f"/categories/{category}/{slug}.html"

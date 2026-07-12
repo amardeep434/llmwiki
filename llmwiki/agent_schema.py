@@ -15,122 +15,22 @@ _LLMWIKI_MARKER = "<!-- llmwiki:auto -->"
 
 def generate_claude_md(project_name: str, wiki_path: str, stats: dict) -> str:
     """Generate CLAUDE.md content for Claude Code integration."""
-    total_pages = stats.get("total_pages", 0)
-    total_edges = stats.get("total_edges", 0)
-    total_clusters = stats.get("total_clusters", 0)
-
-    return f"""# llmwiki Knowledge Base for {project_name}
-
-## Quick Reference
-
-| Resource | Command / Path |
-|----------|---------------|
-| CLI search | `llmwiki search "<query>"` |
-| SQLite DB | `sqlite3 {wiki_path}/llmwiki.db` |
-| Full dump | `cat {wiki_path}/llms-full.txt` |
-| Graph | `{wiki_path}/cross-references.json` |
-
-## Stats
-
-- **{total_pages}** pages, **{total_edges}** cross-references, **{total_clusters}** clusters
-
-## Slash Commands
-
-| Command | Action |
-|---------|--------|
-| `/wiki-query <q>` | `llmwiki search "<q>"` |
-| `/wiki-build` | `llmwiki build` |
-| `/wiki-lint` | `llmwiki lint` |
-
-## SQL Query Examples
-
-```bash
-# Full-text search
-sqlite3 {wiki_path}/llmwiki.db "SELECT title, snippet(pages_fts,1,'>>>','<<<','...',50) FROM pages_fts WHERE pages_fts MATCH 'workflow' ORDER BY rank LIMIT 10"
-
-# Most important pages
-sqlite3 {wiki_path}/llmwiki.db "SELECT title, importance_score FROM pages ORDER BY importance_score DESC LIMIT 20"
-
-# Cross-references for a file
-sqlite3 {wiki_path}/llmwiki.db "SELECT p.title, e.edge_type FROM edges e JOIN pages p ON e.from_id = p.id WHERE e.to_id LIKE '%MyClass%'"
-```
-
-## AI-Consumable Files
-
-| File | Format | Use |
-|------|--------|-----|
-| `llmwiki.db` | SQLite + FTS5 | Structured queries |
-| `llms.txt` | Plain text | Quick overview |
-| `llms-full.txt` | Plain text | Full context dump |
-| `cross-references.json` | JSON | Code relationships |
-"""
+    return _generate_agent_guide("CLAUDE.md", project_name, wiki_path, stats)
 
 
 def generate_agents_md(project_name: str, wiki_path: str, stats: dict) -> str:
     """Generate AGENTS.md for Codex CLI, Gemini, Copilot, Cursor, etc."""
-    total_pages = stats.get("total_pages", 0)
-    total_edges = stats.get("total_edges", 0)
-    total_clusters = stats.get("total_clusters", 0)
-
-    return f"""# llmwiki Knowledge Base for {project_name}
-
-This project has a structured knowledge base with **{total_pages}** pages,
-**{total_edges}** cross-references, and **{total_clusters}** topic clusters.
-
-## How to Query
-
-```bash
-# CLI search
-llmwiki search "<your question>"
-
-# Direct SQL
-sqlite3 {wiki_path}/llmwiki.db "SELECT title FROM pages WHERE title LIKE '%query%'"
-```
-
-## Key Files
-
-- `{wiki_path}/llmwiki.db` — SQLite database with FTS5 full-text search
-- `{wiki_path}/llms.txt` — Short project overview
-- `{wiki_path}/llms-full.txt` — Full content for LLM context windows
-- `{wiki_path}/cross-references.json` — Code artifact relationships
-"""
+    return _generate_agent_guide("AGENTS.md", project_name, wiki_path, stats)
 
 
 def generate_copilot_instructions(project_name: str, wiki_path: str, stats: dict) -> str:
     """Generate .github/copilot-instructions.md content."""
-    total_pages = stats.get("total_pages", 0)
-
-    return f"""# Copilot Instructions for {project_name}
-
-This project uses **llmwiki** to maintain a searchable knowledge base
-with {total_pages} pages of project documentation and code analysis.
-
-## Searching the Knowledge Base
-
-```bash
-llmwiki search "<query>"
-```
-
-## Key Paths
-
-- Wiki database: `{wiki_path}/llmwiki.db`
-- Overview: `{wiki_path}/llms.txt`
-- Full dump: `{wiki_path}/llms-full.txt`
-"""
+    return _generate_agent_guide("Copilot Instructions", project_name, wiki_path, stats)
 
 
 def generate_gemini_md(project_name: str, wiki_path: str, stats: dict) -> str:
     """Generate GEMINI.md content."""
-    total_pages = stats.get("total_pages", 0)
-
-    return f"""# llmwiki Knowledge Base for {project_name}
-
-Use `llmwiki search "<query>"` to search {total_pages} indexed pages.
-
-Database: `{wiki_path}/llmwiki.db`
-Overview: `{wiki_path}/llms.txt`
-Full context: `{wiki_path}/llms-full.txt`
-"""
+    return _generate_agent_guide("GEMINI.md", project_name, wiki_path, stats)
 
 
 def detect_agents(project_root: Path) -> list[str]:
@@ -207,3 +107,48 @@ def _write_or_append(filepath: Path, llmwiki_section: str) -> None:
             filepath.write_text(existing + marked, encoding="utf-8")
     else:
         filepath.write_text(llmwiki_section, encoding="utf-8")
+
+
+def _generate_agent_guide(title: str, project_name: str, wiki_path: str, stats: dict) -> str:
+    """Generate a concise landing guide for an AI agent."""
+    total_pages = stats.get("total_pages", 0)
+    total_edges = stats.get("total_edges", 0)
+    total_clusters = stats.get("total_clusters", 0)
+    return f"""# {title} for {project_name}
+
+{total_pages} pages, {total_edges} cross-references, {total_clusters} clusters
+
+## Wiki Navigation
+
+HTML pages: `{wiki_path}/categories/<category>/<slug>.html`
+Structured data: `<slug>.json` sibling next to each HTML page
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `{wiki_path}/search-index.json` | Client-side search index (title, category, tags, body preview) |
+| `{wiki_path}/cross-references.json` | Knowledge graph with nodes, edges, clusters, and tags |
+| `{wiki_path}/llmwiki.db` | SQLite FTS5 full-text search database |
+| `{wiki_path}/llms.txt` | Page index (llmstxt.org spec) |
+| `{wiki_path}/llms-full.txt` | Full content dump (≤5 MB) |
+| `{wiki_path}/graph.jsonld` | JSON-LD knowledge graph (Schema.org) |
+| `{wiki_path}/sitemap.xml` | Standard XML sitemap |
+| `{wiki_path}/build-history.json` | Build audit trail |
+
+## Lookup Order
+
+1. `search-index.json` — quick title/tag/body substring lookups
+2. `llmwiki.db` — FTS5 full-text queries: `SELECT … FROM pages_fts WHERE pages_fts MATCH '…'`
+3. `cross-references.json` — graph traversal (nodes, edges, clusters, importance)
+4. Per-page `.json` — full metadata + backlinks for a single page
+
+## Quick Commands
+
+```bash
+llmwiki search "<query>"
+sqlite3 {wiki_path}/llmwiki.db "SELECT title, importance_score FROM pages ORDER BY importance_score DESC LIMIT 20"
+```
+
+> AI exports (llms.txt, llms-full.txt, graph.jsonld, sitemap.xml) require `llmwiki export` or `llmwiki all` — they are not generated by `llmwiki build` alone.
+"""

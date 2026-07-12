@@ -74,18 +74,28 @@ Knowledge graph in JSON-LD (Schema.org) format:
 ```json
 {
   "@context": "https://schema.org",
+  "name": "MyProject",
+  "description": "Knowledge graph for MyProject",
   "@graph": [
     {
       "@type": "CreativeWork",
       "@id": "utility/DatabaseUtil",
       "name": "DatabaseUtil",
       "description": "Manages database connections...",
-      "keywords": ["java", "utility"],
-      "isPartOf": "utility"
+      "keywords": ["java", "utility", "method:getConnection"],
+      "url": "/categories/utility/DatabaseUtil.html",
+      "inLanguage": "java",
+      "isPartOf": "utility",
+      "mentions": [
+        {"@id": "com.example.ConnectionPool", "name": "ConnectionPool", "url": "/categories/.../ConnectionPool.html"}
+      ],
+      "relatedLink": ["/categories/.../ConnectionPool.html"]
     }
   ]
 }
 ```
+
+Each node includes `url`, `inLanguage`, `keywords` (tags), and `mentions` (edges to referenced pages built from the graph's edge list).
 
 **Use case:** Structured knowledge graph for RAG pipelines, semantic search, or graph databases.
 
@@ -100,14 +110,127 @@ Every HTML page has a `.json` sibling in the same directory:
   "id": "utility/DatabaseUtil",
   "title": "DatabaseUtil",
   "category": "utility",
-  "tags": ["java"],
+  "tags": ["java", "method:getConnection", "method:executeQuery"],
   "importance": 0.8432,
+  "url": "/categories/utility/DatabaseUtil.html",
+  "source_path": "/src/com/example/DatabaseUtil.java",
+  "language": "java",
+  "cluster_id": "cluster-3",
+  "in_degree": 12,
+  "backlinks": [
+    {"title": "AccountService", "url": "/categories/service/AccountService.html", "category": "service"}
+  ],
+  "methods": ["getConnection", "executeQuery"],
+  "body_length": 8500,
+  "is_truncated": true,
   "body_text": "## Overview\n\nManages database connections...",
   "references": ["com.example.ConnectionPool", "com.example.QueryBuilder"]
 }
 ```
 
+| Field | Description |
+|-------|-------------|
+| `url` | Public URL for this page |
+| `source_path` | Original source file path |
+| `language` | Programming language |
+| `cluster_id` | Topic cluster this page belongs to |
+| `in_degree` | Number of pages linking to this page |
+| `backlinks` | Array of pages that reference this page |
+| `methods` | Extracted method/function names from `method:` tags |
+| `body_length` | Full body length in characters |
+| `is_truncated` | Whether body_text was truncated (at 5000 chars) |
+}
+```
+
 **Use case:** API-like access to individual page metadata without parsing HTML.
+
+---
+
+## search-index.json
+
+Client-side search index used by the wiki's command palette and suitable for lightweight agent lookups.
+
+### Schema
+
+```json
+{
+  "entries": [
+    {
+      "id": "utility/DatabaseUtil",
+      "title": "DatabaseUtil",
+      "url": "/categories/utility/DatabaseUtil.html",
+      "type": "utility",
+      "category": "utility",
+      "tags": ["java", "method:getConnection", "method:executeQuery"],
+      "importance": 0.8432,
+      "body": "## Overview\n\nManages database connections... (first 1200 chars)"
+    }
+  ],
+  "categories": ["config", "utility", "service"],
+  "_mode": "flat"
+}
+```
+
+### Usage
+
+1. Fetch `/search-index.json`
+2. Filter `entries` by title, tags, or body substring match
+3. Use `importance` to rank results
+
+### Method search
+
+Filter tags for entries containing `"method:functionName"`:
+
+```javascript
+entries.filter(e => e.tags.some(t => t.startsWith("method:")))
+```
+
+---
+
+## cross-references.json
+
+Full knowledge graph exported by `llmwiki graph`. Contains nodes, edges, and clusters.
+
+### Schema
+
+```json
+{
+  "nodes": [
+    {
+      "id": "utility/DatabaseUtil",
+      "title": "DatabaseUtil",
+      "type": "utility",
+      "tags": ["java", "method:getConnection"],
+      "in_degree": 12,
+      "out_degree": 3,
+      "importance": 0.8432,
+      "cluster_id": "cluster-3",
+      "url": "/categories/utility/DatabaseUtil.html",
+      "language": "java",
+      "source_path": "/src/com/example/DatabaseUtil.java"
+    }
+  ],
+  "edges": [
+    {"from": "service/AccountService", "to": "utility/DatabaseUtil", "type": "references"}
+  ],
+  "clusters": [
+    {"id": "cluster-3", "label": "Database Layer", "members": ["utility/DatabaseUtil", "..."], "tags": ["java"]}
+  ],
+  "stats": {
+    "total_pages": 127,
+    "total_edges": 342,
+    "total_clusters": 8,
+    "orphans": 5
+  }
+}
+```
+
+### Usage
+
+- **Graph traversal:** Walk `edges` to find related pages from a starting node
+- **Cluster discovery:** Use `clusters` to find thematically related pages
+- **Hub detection:** Sort `nodes` by `in_degree` or `importance` to find central pages
+- **Orphan detection:** Filter nodes where `in_degree == 0 && out_degree == 0`
 
 ---
 
@@ -138,7 +261,7 @@ The `llmwiki.db` file is a SQLite database with full-text search capabilities. I
 
 **`pages_fts`** — FTS5 virtual table (title, body_plain, tags, category)
 
-In the standard build flow, the populated `pages` columns are `id`, `title`, `category`, `body_plain`, `tags`, and `importance_score`. The remaining columns are schema placeholders for future enrichments.
+The standard build populates: `id`, `title`, `category`, `source_path`, `body_plain`, `tags`, `importance_score`, `cluster_id`, `language`, `in_degree`, and `url`. Other columns (`body_md`, `content_hash`, `references_out`, `references_in`, `metadata`) are schema placeholders for future enrichments.
 
 **`edges`** — cross-reference edges:
 

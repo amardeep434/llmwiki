@@ -52,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     # search
     p_search = sub.add_parser("search", help="Search the knowledge base")
     p_search.add_argument("query", help="Search query")
+    p_search.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # graph
     p_graph = sub.add_parser("graph", help="Rebuild knowledge graph")
@@ -294,7 +295,7 @@ def _cmd_build(args) -> int:
     from llmwiki.agent_schema import write_agent_schemas
 
     source_path = config["sources"][0]["path"] if config.get("sources") else str(root)
-    site_dir = root / "site"
+    site_dir = root / config.get("build", {}).get("out_dir", "site")
     write_agent_schemas(
         Path(source_path), str(site_dir),
         config.get("project", {}).get("name", ""),
@@ -312,8 +313,17 @@ def _cmd_serve(args) -> int:
 
 def _cmd_search(args) -> int:
     """Search the knowledge base via SQLite FTS5."""
+    from llmwiki.config import load_config
     from llmwiki.search import cli_search
-    return cli_search(args.query, "site/llmwiki.db")
+
+    cfg_path = Path(args.config)
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        out_dir = config.get("build", {}).get("out_dir", "site")
+    else:
+        out_dir = "site"
+    db_path = str(Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db")
+    return cli_search(args.query, db_path)
 
 
 def _cmd_all(args) -> int:
@@ -356,7 +366,7 @@ def _cmd_graph(args) -> int:
 def _cmd_export(args) -> int:
     """Generate AI-consumable exports."""
     from llmwiki.config import load_config
-    from llmwiki.graph import _load_pages
+    from llmwiki.graph import _load_pages, build_graph
     from llmwiki.exporters import export_all
 
     cfg_path = Path(args.config)
@@ -365,11 +375,17 @@ def _cmd_export(args) -> int:
     raw_dir = root / "raw"
     site_dir = root / config.get("build", {}).get("out_dir", "site")
     pages = _load_pages(raw_dir)
+    # Build graph for edge data in graph.jsonld export
+    graph = build_graph(raw_dir)
     for pid, pdata in pages.items():
-        pdata["url"] = f"/categories/{pid}.html"
+        cat = (pdata.get("category", "") or "uncategorized").lower()
+        slug = pid.split("/")[-1] if "/" in pid else pid
+        pdata["url"] = pdata.get("url") or f"/categories/{cat}/{slug}.html"
     project_name = config.get("project", {}).get("name", "")
+    project_description = config.get("project", {}).get("description", "")
+    base_url = config.get("project", {}).get("base_url", "http://localhost:8765")
     print("📤 Exporting AI-consumable formats...")
-    export_all(pages, site_dir, project_name)
+    export_all(pages, site_dir, project_name, base_url, project_description, graph=graph)
     print("  Generated: llms.txt, llms-full.txt, graph.jsonld, sitemap.xml")
     return 0
 
@@ -397,11 +413,18 @@ def _cmd_lint(args) -> int:
 
 def _cmd_stats(args) -> int:
     """Print inventory statistics."""
+    from llmwiki.config import load_config
+
     cfg_path = Path(args.config).resolve()
     root = cfg_path.parent
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        out_dir = config.get("build", {}).get("out_dir", "site")
+    else:
+        out_dir = "site"
     raw = root / "raw"
     wiki = root / "wiki"
-    site = root / "site"
+    site = root / out_dir
     print("📊 LLMWiki Statistics")
     for label, d in [("Raw", raw), ("Wiki", wiki), ("Site", site)]:
         if d.exists():
