@@ -374,6 +374,38 @@ Usage: llmwiki build --theme <name>
 
 ---
 
+### `llmwiki add-source`
+
+Add a source directory or PDF folder to the project configuration.
+
+```bash
+llmwiki add-source <path> [--type code|pdf] [--label NAME] [--config PATH]
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `path` | Yes | — | Path to source directory, PDF file, or PDF folder |
+| `--type` | No | `code` | Source type: `code` (codebase) or `pdf` (documentation) |
+| `--label` | No | `docs` | Category label for PDF sources |
+| `--config` | No | `llmwiki.json` | Path to the configuration file |
+
+**Examples:**
+
+```bash
+# Add a code directory
+llmwiki add-source ~/projects/shared-libs
+
+# Add a PDF documentation folder
+llmwiki add-source ~/manuals/ --type pdf --label admin-guides
+
+# Add a single PDF file
+llmwiki add-source ~/specs/architecture.pdf --type pdf --label architecture
+```
+
+Detects duplicates automatically. Run `llmwiki ingest` after adding sources.
+
+---
+
 ### `llmwiki all`
 
 Run the full pipeline in sequence.

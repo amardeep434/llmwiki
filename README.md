@@ -86,6 +86,7 @@ llmwiki init --source C:\path\to\your\project
 | `llmwiki lint`     | Check for broken links and orphaned pages        |
 | `llmwiki stats`    | Print inventory statistics                       |
 | `llmwiki themes`   | List available UI themes                         |
+| `llmwiki add-source <path>` | Add a source directory or PDF folder to config |
 | `llmwiki all`      | Full pipeline: ingest → build → graph → export → lint |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.

@@ -106,19 +106,44 @@ After init, edit `.llmwiki/llmwiki.json` to add additional source directories or
 
 ## Step 4: Add PDF Documentation (Optional)
 
-To include PDF files, edit `llmwiki.json` and add entries to `pdf_sources`:
+Use the `add-source` CLI command to add PDF files or folders:
+
+```bash
+# Add a single PDF file
+llmwiki add-source /path/to/admin-guide.pdf --type pdf --label admin
+
+# Add an entire folder of PDFs (scanned recursively)
+llmwiki add-source /path/to/manuals/ --type pdf --label manuals
+
+# Add another documentation folder with a different label
+llmwiki add-source /path/to/specs/ --type pdf --label specifications
+```
+
+Or edit `llmwiki.json` directly:
 
 ```json
 {
   "pdf_sources": [
-    { "path": "/path/to/docs/architecture.pdf", "label": "architecture" },
-    { "path": "/path/to/manuals/", "label": "manuals" }
+    { "path": "/path/to/admin-guide.pdf", "label": "admin" },
+    { "path": "/path/to/manuals/", "label": "manuals" },
+    { "path": "/path/to/specs/", "label": "specifications" }
   ]
 }
 ```
 
-- Point `path` at a single PDF file or a directory (all `.pdf` files will be found recursively)
-- The `label` becomes the category for those pages
+- **`path`** — a single PDF file or a directory (all `.pdf` files found recursively)
+- **`label`** — the category name for resulting wiki pages (each folder can have its own label)
+- You can add as many entries as you need — each gets its own category in the wiki
+
+**Adding code sources after init** also works:
+
+```bash
+# Add another codebase directory
+llmwiki add-source /path/to/shared-libs
+
+# Add a docs directory
+llmwiki add-source /path/to/project/docs
+```
 
 ---
 

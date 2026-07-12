@@ -72,8 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     # themes
     sub.add_parser("themes", help="List available UI themes")
 
-    # diff
-    sub.add_parser("diff", help="Show changes since last build")
+    # add-source
+    p_add = sub.add_parser("add-source", help="Add a source directory or PDF folder to config")
+    p_add.add_argument("path", help="Path to source directory or PDF file/folder")
+    p_add.add_argument("--type", choices=["code", "pdf"], default="code", help="Source type (default: code)")
+    p_add.add_argument("--label", default="docs", help="Category label for PDF sources (default: docs)")
+    p_add.add_argument("--config", default="llmwiki.json", help="Config file path")
 
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
@@ -99,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         "stats": _cmd_stats,
         "themes": _cmd_themes,
         "clean": _cmd_clean,
+        "add-source": _cmd_add_source,
     }
 
     handler = dispatch.get(args.command)
@@ -472,4 +477,62 @@ def _cmd_clean(args) -> int:
     else:
         print("Nothing to clean.")
 
+    return 0
+
+
+def _cmd_add_source(args) -> int:
+    """Add a source directory or PDF folder to the config."""
+    from llmwiki.config import load_config, save_config, DEFAULT_EXCLUDE
+
+    cfg_path = Path(args.config).resolve()
+    if not cfg_path.exists():
+        print(f"Error: config not found at {cfg_path}. Run `llmwiki init` first.", file=sys.stderr)
+        return 1
+
+    source_path = Path(args.path).expanduser().resolve()
+    if not source_path.exists():
+        print(f"Error: path does not exist: {source_path}", file=sys.stderr)
+        return 1
+
+    config = load_config(cfg_path)
+    source_type = args.type
+
+    if source_type == "pdf":
+        pdf_sources = config.get("pdf_sources", [])
+        for existing in pdf_sources:
+            if Path(existing["path"]).resolve() == source_path:
+                print(f"⚠ Already configured: {source_path}")
+                return 0
+        label = args.label
+        pdf_sources.append({"path": str(source_path), "label": label})
+        config["pdf_sources"] = pdf_sources
+        save_config(config, cfg_path)
+        if source_path.is_dir():
+            pdf_count = len(list(source_path.rglob("*.pdf")))
+            print(f"✅ Added PDF source: {source_path} ({pdf_count} PDF files found)")
+        else:
+            print(f"✅ Added PDF source: {source_path}")
+        print(f"   Category label: {label}")
+    else:
+        sources = config.get("sources", [])
+        for existing in sources:
+            if Path(existing["path"]).resolve() == source_path:
+                print(f"⚠ Already configured: {source_path}")
+                return 0
+        sources.append({
+            "path": str(source_path),
+            "type": "auto",
+            "exclude": list(DEFAULT_EXCLUDE),
+        })
+        config["sources"] = sources
+        save_config(config, cfg_path)
+        from llmwiki.adapters import detect_adapters
+        detected = detect_adapters(source_path)
+        total = sum(len(f) for f in detected.values())
+        print(f"✅ Added source: {source_path} ({total} files detected)")
+        for adapter_name, files in detected.items():
+            if files:
+                print(f"   {adapter_name}: {len(files)} files")
+
+    print(f"\nRun `llmwiki ingest` to process the new source.")
     return 0
