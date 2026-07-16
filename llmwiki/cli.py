@@ -90,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     p_agent.add_argument("--status", action="store_true", help="Show current status")
     p_agent.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # benchmark
+    p_bench = sub.add_parser("benchmark", help="Compare token usage: raw files vs wiki search")
+    p_bench.add_argument("query", help="Search query to benchmark")
+    p_bench.add_argument("--config", default="llmwiki.json", help="Config file path")
+
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
     p_all.add_argument("--config", default="llmwiki.json", help="Config file path")
@@ -116,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         "clean": _cmd_clean,
         "add-source": _cmd_add_source,
         "agent": _cmd_agent,
+        "benchmark": _cmd_benchmark,
     }
 
     handler = dispatch.get(args.command)
@@ -624,4 +630,25 @@ def _cmd_agent(args) -> int:
     print("\nUsage:")
     print("  llmwiki agent --enable   Enable wiki-first agent behavior")
     print("  llmwiki agent --disable  Disable agent assist")
+    return 0
+
+
+def _cmd_benchmark(args) -> int:
+    """Run token efficiency benchmark."""
+    from llmwiki.benchmark import run_benchmark, format_benchmark_report
+    from llmwiki.config import load_config
+    cfg_path = Path(args.config).resolve()
+    if not cfg_path.exists():
+        print(f"Error: config not found: {cfg_path}", file=sys.stderr)
+        return 1
+    config = load_config(cfg_path)
+    root = cfg_path.parent
+    out_dir = config.get("build", {}).get("out_dir", "site")
+    wiki_dir = root / out_dir
+    source_dirs = [Path(s["path"]) for s in config.get("sources", [])]
+    if not wiki_dir.exists():
+        print("Error: site not built yet. Run `llmwiki all` first.", file=sys.stderr)
+        return 1
+    result = run_benchmark(args.query, source_dirs=source_dirs, wiki_dir=wiki_dir)
+    print(format_benchmark_report(result))
     return 0
