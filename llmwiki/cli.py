@@ -80,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
     p_add.add_argument("--label", default="docs", help="Category label for PDF sources (default: docs)")
     p_add.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # agent
+    p_agent = sub.add_parser("agent", help="Enable/disable wiki-first agent behavior")
+    p_agent.add_argument("--enable", action="store_true", help="Enable wiki-first agent assist")
+    p_agent.add_argument("--disable", action="store_true", help="Disable agent assist")
+    p_agent.add_argument("--status", action="store_true", help="Show current status")
+    p_agent.add_argument("--config", default="llmwiki.json", help="Config file path")
+
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
     p_all.add_argument("--config", default="llmwiki.json", help="Config file path")
@@ -105,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         "themes": _cmd_themes,
         "clean": _cmd_clean,
         "add-source": _cmd_add_source,
+        "agent": _cmd_agent,
     }
 
     handler = dispatch.get(args.command)
@@ -558,4 +566,34 @@ def _cmd_add_source(args) -> int:
                 print(f"   {adapter_name}: {len(files)} files")
 
     print(f"\nRun `llmwiki ingest` to process the new source.")
+    return 0
+
+
+def _cmd_agent(args) -> int:
+    """Enable/disable wiki-first agent behavior."""
+    from llmwiki.agent_toggle import enable_agent, disable_agent, get_agent_status
+    cfg_path = Path(args.config).resolve()
+    if not cfg_path.exists():
+        print(f"Error: config not found: {cfg_path}", file=sys.stderr)
+        return 1
+    if args.enable:
+        enable_agent(cfg_path)
+        print("✅ Agent assist ENABLED — agents will query LLMWiki first")
+        print("   Run `llmwiki build` to regenerate agent schema files")
+        return 0
+    if args.disable:
+        disable_agent(cfg_path)
+        print("🚫 Agent assist DISABLED — agents use normal file reading")
+        print("   Run `llmwiki build` to regenerate agent schema files")
+        return 0
+    if args.status:
+        status = get_agent_status(cfg_path)
+        print(f"Agent assist: {'ENABLED ✅' if status else 'DISABLED 🚫'}")
+        return 0
+    # Default: show status
+    status = get_agent_status(cfg_path)
+    print(f"Agent assist: {'ENABLED ✅' if status else 'DISABLED 🚫'}")
+    print("\nUsage:")
+    print("  llmwiki agent --enable   Enable wiki-first agent behavior")
+    print("  llmwiki agent --disable  Disable agent assist")
     return 0
