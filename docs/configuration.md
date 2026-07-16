@@ -41,6 +41,7 @@ LLMWiki is configured via `llmwiki.json`, created automatically by `llmwiki init
     "importance_iterations": 20,
     "cluster_min_size": 3
   },
+  "agent_assist": false,
   "exclude_global": [
     "node_modules", ".git", "build", "dist", "__pycache__"
   ]
@@ -148,6 +149,14 @@ The `--theme` flag overrides the config value for that build.
 | `enabled` | boolean | `true` | Enable cross-reference extraction and graph building |
 | `importance_iterations` | integer | `20` | Documented setting, but PageRank iterations are currently hardcoded to 20 |
 | `cluster_min_size` | integer | `3` | Documented setting, but cluster detection currently uses a hardcoded minimum size of 3 |
+
+### `agent_assist`
+
+| Type | Default | Description |
+|------|---------|-------------|
+| boolean | `false` | Enable wiki-first agent behavior for IDE integration |
+
+When set to `true`, the MCP server and IDE integrations prioritize wiki search over raw file access, reducing token usage by 90%+. Enable with `llmwiki agent --enable`.
 
 ### `exclude_global`
 

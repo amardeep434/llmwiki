@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **AI Agent Integration**:
+  - `llmwiki agent` — Enable/disable wiki-first agent behavior with `--enable`, `--disable`, `--status` flags
+  - `llmwiki search` — Enhanced with `--json`, `--compact`, `--context` output modes for AI consumption
+  - `llmwiki benchmark` — Token efficiency comparison between raw file access and wiki search
+  - `llmwiki mcp` — MCP (Model Context Protocol) server for IDE integration via stdio JSON-RPC
+  - `llmwiki setup-agent` — Generate MCP configs for VS Code, Cursor, JetBrains, Windsurf, GitHub Copilot CLI
+  - Dashboard token stats widget showing raw tokens, wiki tokens, and compression percentage
+  - [docs/token-efficiency.md](docs/token-efficiency.md) — Documentation on measuring and achieving 90%+ token savings
+  - GitHub Copilot CLI extension generation (`--extension` flag)
+  - Copilot CLI workspace config generation (`--cli` flag)
+  - MCP tools: `wiki_search`, `wiki_get_page`, `wiki_list_categories`
+
+---
+
 ## [0.1.0] — 2026-07-11
 
 ### Added

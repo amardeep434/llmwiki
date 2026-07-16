@@ -229,6 +229,27 @@ Available built-in themes: `emerald-dark` (default), `vodafone`. Run `llmwiki th
 
 ---
 
+## Step 6.5: Enable AI Agent Integration (Optional)
+
+Set up your IDE to use the wiki for intelligent code assistance:
+
+```bash
+# Generate MCP configs for your IDE
+llmwiki setup-agent --all
+
+# Enable wiki-first mode
+llmwiki agent --enable
+
+# Rebuild to update agent instructions
+llmwiki build
+```
+
+Your IDE's AI assistant (Copilot, Cursor, Claude) will now query the wiki before reading raw files, saving 90%+ tokens.
+
+See [Token Efficiency](token-efficiency.md) for measuring the savings.
+
+---
+
 ## Step 7: Serve and Browse
 
 Start the local development server:

@@ -88,6 +88,11 @@ llmwiki init --source C:\path\to\your\project
 | `llmwiki themes`   | List available UI themes                         |
 | `llmwiki add-source <path>` | Add a source directory or PDF folder to config |
 | `llmwiki all`      | Full pipeline: ingest → build → graph → export → lint |
+| `llmwiki agent`    | Enable/disable wiki-first agent behavior        |
+| `llmwiki search --context` | Search with full LLM-ready context output |
+| `llmwiki benchmark` | Compare token usage: raw files vs wiki search  |
+| `llmwiki mcp`      | Start MCP server for IDE integration             |
+| `llmwiki setup-agent` | Generate MCP configs for VS Code, Cursor, etc. |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 
@@ -115,6 +120,7 @@ See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 - **Build history**: root + site `build-history.json` log each build summary
 - **Cross-platform**: works on Windows, macOS, and Linux
 - **Minimal dependencies**: just `markdown` + `pymupdf` (everything else is stdlib)
+- **AI agent integration**: MCP server for IDE integration (VS Code, Cursor, JetBrains, Windsurf), wiki-first agent behavior with 90%+ token savings, CLI extension generation for GitHub Copilot
 
 ---
 
@@ -141,6 +147,38 @@ See [docs/configuration.md](docs/configuration.md) for the full reference.
 ---
 
 ## AI Agent Integration
+
+LLMWiki includes powerful AI agent integration features that enable your IDE's AI assistant to leverage the wiki instead of reading raw files, reducing token usage by 90%+.
+
+### MCP Server for IDE Integration
+
+Start the MCP server to connect your IDE (VS Code, Cursor, JetBrains, Windsurf) to the wiki:
+
+```bash
+llmwiki mcp
+```
+
+Generate IDE configuration files:
+
+```bash
+llmwiki setup-agent --all
+```
+
+Enable wiki-first agent behavior:
+
+```bash
+llmwiki agent --enable
+```
+
+Measure token savings:
+
+```bash
+llmwiki benchmark "authentication flow"
+```
+
+See [docs/ai-integration.md](docs/ai-integration.md) and [docs/token-efficiency.md](docs/token-efficiency.md) for details.
+
+### Export Files
 
 LLMWiki generates several files designed for consumption by LLMs and AI agents:
 
