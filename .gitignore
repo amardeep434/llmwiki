@@ -14,3 +14,4 @@ site/
 llmwiki.db
 *.db
 .pytest_cache/
+docs/superpowers/
