@@ -95,6 +95,10 @@ def main(argv: list[str] | None = None) -> int:
     p_bench.add_argument("query", help="Search query to benchmark")
     p_bench.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # mcp
+    p_mcp = sub.add_parser("mcp", help="Start MCP server (stdio mode for IDE integration)")
+    p_mcp.add_argument("--config", default="llmwiki.json", help="Config file path")
+
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
     p_all.add_argument("--config", default="llmwiki.json", help="Config file path")
@@ -122,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         "add-source": _cmd_add_source,
         "agent": _cmd_agent,
         "benchmark": _cmd_benchmark,
+        "mcp": _cmd_mcp,
     }
 
     handler = dispatch.get(args.command)
@@ -651,4 +656,19 @@ def _cmd_benchmark(args) -> int:
         return 1
     result = run_benchmark(args.query, source_dirs=source_dirs, wiki_dir=wiki_dir)
     print(format_benchmark_report(result))
+    return 0
+
+
+def _cmd_mcp(args) -> int:
+    """Start MCP server for IDE integration."""
+    from llmwiki.mcp_server import run_server
+    from llmwiki.config import load_config
+    cfg_path = Path(args.config).resolve()
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        out_dir = config.get("build", {}).get("out_dir", "site")
+        wiki_dir = str(cfg_path.parent / out_dir)
+    else:
+        wiki_dir = "site"
+    run_server(wiki_dir)
     return 0
