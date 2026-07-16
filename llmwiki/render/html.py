@@ -703,6 +703,31 @@ def render_dashboard(
     )
     parts.append('</div>\n')
 
+    # Token efficiency strip
+    wiki_tokens = stats.get("wiki_tokens", 0)
+    raw_tokens = stats.get("raw_source_tokens", 0)
+    if raw_tokens > 0:
+        compression = round((1 - wiki_tokens / raw_tokens) * 100, 1) if raw_tokens > 0 else 0
+        parts.append('<div class="stats-strip" style="margin-top:var(--sp-2);">\n')
+        parts.append(
+            f'<div class="stats-strip__item">'
+            f'<span class="stats-strip__value">{raw_tokens:,}</span>'
+            f'<span class="stats-strip__label">raw tokens</span></div>\n'
+        )
+        parts.append('<div class="stats-strip__sep"></div>\n')
+        parts.append(
+            f'<div class="stats-strip__item">'
+            f'<span class="stats-strip__value stats-strip__value--accent">{wiki_tokens:,}</span>'
+            f'<span class="stats-strip__label">wiki tokens</span></div>\n'
+        )
+        parts.append('<div class="stats-strip__sep"></div>\n')
+        parts.append(
+            f'<div class="stats-strip__item">'
+            f'<span class="stats-strip__value stats-strip__value--accent">{compression}%</span>'
+            f'<span class="stats-strip__label">compression</span></div>\n'
+        )
+        parts.append('</div>\n')
+
     # FIX 1: Recent changes feed (always render section)
     if recent_changes:
         parts.append('<div class="section">\n')

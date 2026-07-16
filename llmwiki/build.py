@@ -169,9 +169,24 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # Build generic content type groups (Tier 1 + Tier 2 sub-categories)
     content_type_groups = _build_content_type_groups(pages, categories)
 
+    # Token efficiency stats
+    wiki_tokens = sum(len(pdata.get("body", "")) for pdata in pages.values()) // 4
+    raw_source_tokens = 0
+    for source in config.get("sources", []):
+        src_path = Path(source["path"])
+        if src_path.exists():
+            for f in src_path.rglob("*"):
+                if f.is_file() and f.suffix not in {".pyc", ".class", ".o", ".so", ".dll", ".jar", ".png", ".jpg", ".gif", ".ico", ".svg", ".zip", ".tar", ".gz"}:
+                    try:
+                        raw_source_tokens += len(f.read_bytes()) // 4
+                    except OSError:
+                        pass
+
     # Add last_build to stats for the 4th stats card
     dash_stats = dict(graph["stats"])
     dash_stats["last_build"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    dash_stats["wiki_tokens"] = wiki_tokens
+    dash_stats["raw_source_tokens"] = raw_source_tokens
 
     # Compute recent changes by comparing page hashes to previous build
     recent_changes = _compute_recent_changes(root, pages)
