@@ -99,6 +99,18 @@ def main(argv: list[str] | None = None) -> int:
     p_mcp = sub.add_parser("mcp", help="Start MCP server (stdio mode for IDE integration)")
     p_mcp.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # setup-agent
+    p_setup = sub.add_parser("setup-agent", help="Generate MCP configs for IDE integration")
+    p_setup.add_argument("--mcp", action="store_true", help="Generate MCP configs for all detected IDEs")
+    p_setup.add_argument("--vscode", action="store_true", help="VS Code Copilot (.vscode/mcp.json)")
+    p_setup.add_argument("--cursor", action="store_true", help="Cursor (.cursor/mcp.json)")
+    p_setup.add_argument("--jetbrains", action="store_true", help="JetBrains (.idea/ai-mcp.json)")
+    p_setup.add_argument("--windsurf", action="store_true", help="Windsurf (.windsurf/mcp.json)")
+    p_setup.add_argument("--extension", action="store_true", help="Copilot CLI extension (.github/extensions/)")
+    p_setup.add_argument("--cli", action="store_true", help="CLI instructions in CLAUDE.md/AGENTS.md")
+    p_setup.add_argument("--all", action="store_true", help="Install everything")
+    p_setup.add_argument("--config", default="llmwiki.json", help="Config file path")
+
     # all
     p_all = sub.add_parser("all", help="Full pipeline: ingest → build → graph → export → lint")
     p_all.add_argument("--config", default="llmwiki.json", help="Config file path")
@@ -127,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         "agent": _cmd_agent,
         "benchmark": _cmd_benchmark,
         "mcp": _cmd_mcp,
+        "setup-agent": _cmd_setup_agent,
     }
 
     handler = dispatch.get(args.command)
@@ -672,3 +685,79 @@ def _cmd_mcp(args) -> int:
         wiki_dir = "site"
     run_server(wiki_dir)
     return 0
+
+
+def _cmd_setup_agent(args) -> int:
+    """Generate IDE integration configs and agent extensions."""
+    from llmwiki.setup_agent import detect_ides, setup_all
+    from llmwiki.config import load_config
+
+    cfg_path = Path(args.config).resolve()
+    if not cfg_path.exists():
+        print(f"Error: config file not found: {cfg_path}", file=sys.stderr)
+        print("Run `llmwiki init` first to create a project.", file=sys.stderr)
+        return 1
+
+    config = load_config(cfg_path)
+    project_root = cfg_path.parent.parent  # config is in .llmwiki/
+    wiki_subdir = cfg_path.parent.name  # ".llmwiki"
+
+    # Determine which targets to generate
+    targets = []
+
+    # If --all or --mcp: detect + generate for all
+    if args.all or args.mcp:
+        detected = detect_ides(project_root)
+        print(f"🔍 Detected IDEs: {', '.join(detected) if detected else 'none'}")
+        targets.extend(detected)
+        # Also add explicitly requested ones
+        if args.vscode:
+            targets.append("vscode")
+        if args.cursor:
+            targets.append("cursor")
+        if args.jetbrains:
+            targets.append("jetbrains")
+        if args.windsurf:
+            targets.append("windsurf")
+        if args.extension or args.all:
+            targets.append("copilot_cli")
+        # Remove duplicates, preserve order
+        seen = set()
+        targets = [t for t in targets if not (t in seen or seen.add(t))]
+    else:
+        # Only generate explicitly requested targets
+        if args.vscode:
+            targets.append("vscode")
+        if args.cursor:
+            targets.append("cursor")
+        if args.jetbrains:
+            targets.append("jetbrains")
+        if args.windsurf:
+            targets.append("windsurf")
+        if args.extension:
+            targets.append("copilot_cli")
+
+    if not targets and not args.cli:
+        print("No targets specified. Use --all, --mcp, or specific flags (--vscode, --cursor, etc.)")
+        return 1
+
+    # Generate configs
+    if targets:
+        created = setup_all(project_root, wiki_subdir, targets)
+        print("\n✅ Generated IDE integration configs:\n")
+        for path in created:
+            print(f"   {path}")
+
+    # Handle --cli flag
+    if args.cli:
+        print("\n📝 CLI Usage Instructions:\n")
+        print("   To use llmwiki from the command line:")
+        print(f"   cd {project_root}/{wiki_subdir}")
+        print("   llmwiki search \"your query\" --compact")
+        print("\n   For Copilot CLI extension:")
+        print("   gh copilot extensions reload")
+        print("   Then use: @llmwiki_search in your prompt")
+
+    print("\n🎉 Setup complete! Restart your IDE to load MCP configs.\n")
+    return 0
+
