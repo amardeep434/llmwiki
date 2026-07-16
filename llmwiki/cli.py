@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
     p_search = sub.add_parser("search", help="Search the knowledge base")
     p_search.add_argument("query", help="Search query")
     p_search.add_argument("--config", default="llmwiki.json", help="Config file path")
+    p_search.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON array")
+    p_search.add_argument("--compact", action="store_true", help="Minimal output (lowest tokens)")
+    p_search.add_argument("--context", action="store_true", help="Full context for LLM consumption")
 
     # graph
     p_graph = sub.add_parser("graph", help="Rebuild knowledge graph")
@@ -322,7 +325,9 @@ def _cmd_serve(args) -> int:
 def _cmd_search(args) -> int:
     """Search the knowledge base via SQLite FTS5."""
     from llmwiki.config import load_config
-    from llmwiki.search import cli_search
+    from llmwiki.search import (
+        search_pages, format_results_json, format_results_compact, format_results_context
+    )
 
     cfg_path = Path(args.config)
     if cfg_path.exists():
@@ -330,8 +335,31 @@ def _cmd_search(args) -> int:
         out_dir = config.get("build", {}).get("out_dir", "site")
     else:
         out_dir = "site"
-    db_path = str(Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db")
-    return cli_search(args.query, db_path)
+    db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
+    
+    results = search_pages(db_path, args.query)
+    
+    if not results:
+        print(f"No results for: {args.query}")
+        return 0
+    
+    # Format output based on flags
+    if args.json_output:
+        print(format_results_json(results))
+    elif args.compact:
+        print(format_results_compact(results))
+    elif args.context:
+        print(format_results_context(results, db_path))
+    else:
+        # Default human-readable format
+        print(f"Found {len(results)} results for: {args.query}\n")
+        for r in results:
+            print(f"  [{r.get('category', '')}] {r['title']}")
+            if r.get("snippet"):
+                print(f"    {r['snippet']}")
+            print()
+    
+    return 0
 
 
 def _cmd_all(args) -> int:

@@ -176,6 +176,45 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
     return results
 
 
+def format_results_json(results: list[dict]) -> str:
+    """Format search results as JSON array."""
+    return json.dumps(results, indent=2)
+
+
+def format_results_compact(results: list[dict]) -> str:
+    """Format as minimal text: one line per result (lowest token usage)."""
+    lines = []
+    for r in results:
+        lines.append(f"{r['title']} [{r.get('category', '')}] imp={r.get('importance_score', 0):.3f}")
+    return "\n".join(lines)
+
+
+def format_results_context(results: list[dict], db_path: Path) -> str:
+    """Format with full page bodies for LLM context consumption."""
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    parts = []
+    for r in results:
+        row = conn.execute(
+            "SELECT body_plain, tags, url FROM pages WHERE id = ?", (r["id"],)
+        ).fetchone()
+        if row:
+            body = row["body_plain"] or ""
+            tags = row["tags"] or "[]"
+            url = row["url"] or ""
+            parts.append(
+                f"## {r['title']}\n"
+                f"Category: {r.get('category', '')}\n"
+                f"URL: {url}\n"
+                f"Tags: {tags}\n\n"
+                f"{body}\n"
+            )
+    conn.close()
+    total_tokens = sum(len(p) for p in parts) // 4
+    header = f"# Search Results ({len(results)} pages, ~{total_tokens:,} tokens)\n\n"
+    return header + "\n---\n\n".join(parts)
+
+
 def cli_search(query: str, db_path: str) -> int:
     """CLI search entry point."""
     results = search_pages(Path(db_path), query)

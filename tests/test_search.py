@@ -1,7 +1,11 @@
 """Tests for SQLite FTS5 search."""
 
+import json
 from pathlib import Path
-from llmwiki.search import create_search_db, insert_page, search_pages, cli_search
+from llmwiki.search import (
+    create_search_db, insert_page, search_pages, cli_search,
+    format_results_json, format_results_compact, format_results_context
+)
 
 
 class TestSearch:
@@ -43,3 +47,31 @@ class TestSearch:
             insert_page(db_path, p)
         results = search_pages(db_path, "Content")
         assert len(results) >= 10
+
+    def test_format_results_json(self):
+        results = [{"id": "test", "title": "Test", "category": "core", "importance_score": 0.5, "snippet": "hello"}]
+        output = format_results_json(results)
+        parsed = json.loads(output)
+        assert isinstance(parsed, list)
+        assert parsed[0]["title"] == "Test"
+
+    def test_format_results_compact(self):
+        results = [{"id": "test", "title": "Test Page", "category": "core", "importance_score": 0.5}]
+        output = format_results_compact(results)
+        assert "Test Page" in output
+        assert "[core]" in output
+        assert len(output.split("\n")) == 1
+
+    def test_format_results_context(self, tmp_path):
+        db = tmp_path / "test.db"
+        create_search_db(db)
+        insert_page(db, {
+            "id": "auth", "title": "Auth Module", "category": "core",
+            "body_plain": "handles login and auth flows", "tags": '["auth"]',
+            "importance_score": 0.8, "url": "/categories/core/auth.html"
+        })
+        results = [{"id": "auth", "title": "Auth Module", "category": "core", "importance_score": 0.8}]
+        output = format_results_context(results, db)
+        assert "Auth Module" in output
+        assert "handles login" in output
+        assert "tokens" in output
