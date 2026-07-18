@@ -61,38 +61,38 @@ llmwiki init --source C:\path\to\your\project
 
 **3-layer data model:**
 
-| Layer | Path    | Purpose                              | Mutable? |
-|-------|---------|--------------------------------------|----------|
-| Raw   | `raw/`  | Adapter output, never hand-edited    | No       |
-| Wiki  | `wiki/` | Generated intermediate markdown      | No       |
-| Site  | `site/` | Generated HTML, search index, exports| No       |
+| Layer | Path      | Purpose                               | Mutable? |
+| ----- | --------- | ------------------------------------- | -------- |
+| Raw   | `raw/`  | Adapter output, never hand-edited     | No       |
+| Wiki  | `wiki/` | Generated intermediate markdown       | No       |
+| Site  | `site/` | Generated HTML, search index, exports | No       |
 
 ---
 
 ## CLI Reference
 
-| Command            | Description                                      |
-|--------------------|--------------------------------------------------|
-| `llmwiki init`     | Initialize project — scan source, create config  |
-| `llmwiki ingest`   | Run adapters to populate `raw/`                  |
-| `llmwiki ingest --force` | Force re-ingest all files (ignore state cache) |
-| `llmwiki clean`    | Clean generated data and reset state             |
-| `llmwiki build`    | Build `wiki/` and `site/` from `raw/`            |
-| `llmwiki build --theme <name>` | Build with a specific UI theme        |
-| `llmwiki serve`    | Start local HTTP server (default port 8765)      |
-| `llmwiki search`   | Full-text search via SQLite FTS5                 |
-| `llmwiki graph`    | Rebuild the knowledge graph                      |
-| `llmwiki export`   | Generate AI-consumable exports                   |
-| `llmwiki lint`     | Check for broken links and orphaned pages        |
-| `llmwiki stats`    | Print inventory statistics                       |
-| `llmwiki themes`   | List available UI themes                         |
-| `llmwiki add-source <path>` | Add a source directory or PDF folder to config |
-| `llmwiki all`      | Full pipeline: ingest → build → graph → export → lint |
-| `llmwiki agent`    | Enable/disable wiki-first agent behavior        |
-| `llmwiki search --context` | Search with full LLM-ready context output |
-| `llmwiki benchmark` | Compare token usage: raw files vs wiki search  |
-| `llmwiki mcp`      | Start MCP server for IDE integration             |
-| `llmwiki setup-agent` | Generate MCP configs for VS Code, Cursor, etc. |
+| Command                          | Description                                               |
+| -------------------------------- | --------------------------------------------------------- |
+| `llmwiki init`                 | Initialize project — scan source, create config          |
+| `llmwiki ingest`               | Run adapters to populate`raw/`                          |
+| `llmwiki ingest --force`       | Force re-ingest all files (ignore state cache)            |
+| `llmwiki clean`                | Clean generated data and reset state                      |
+| `llmwiki build`                | Build`wiki/` and `site/` from `raw/`                |
+| `llmwiki build --theme <name>` | Build with a specific UI theme                            |
+| `llmwiki serve`                | Start local HTTP server (default port 8765)               |
+| `llmwiki search`               | Full-text search via SQLite FTS5                          |
+| `llmwiki graph`                | Rebuild the knowledge graph                               |
+| `llmwiki export`               | Generate AI-consumable exports                            |
+| `llmwiki lint`                 | Check for broken links and orphaned pages                 |
+| `llmwiki stats`                | Print inventory statistics                                |
+| `llmwiki themes`               | List available UI themes                                  |
+| `llmwiki add-source <path>`    | Add a source directory or PDF folder to config            |
+| `llmwiki all`                  | Full pipeline: ingest → build → graph → export → lint |
+| `llmwiki agent`                | Enable/disable wiki-first agent behavior                  |
+| `llmwiki search --context`     | Search with full LLM-ready context output                 |
+| `llmwiki benchmark`            | Compare token usage: raw files vs wiki search             |
+| `llmwiki mcp`                  | Start MCP server for IDE integration                      |
+| `llmwiki setup-agent`          | Generate MCP configs for VS Code, Cursor, etc.            |
 
 See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 
@@ -182,14 +182,14 @@ See [docs/ai-integration.md](docs/ai-integration.md) and [docs/token-efficiency.
 
 LLMWiki generates several files designed for consumption by LLMs and AI agents:
 
-| File               | Format   | Purpose                                           |
-|--------------------|----------|---------------------------------------------------|
-| `llms.txt`         | Text     | Index of all pages per [llmstxt.org](https://llmstxt.org) spec |
-| `llms-full.txt`    | Text     | Flattened text dump of all page content (≤5 MB)   |
-| `graph.jsonld`     | JSON-LD  | Knowledge graph in Schema.org format              |
-| `sitemap.xml`      | XML      | Standard sitemap for crawlers                     |
-| `llmwiki.db`       | SQLite   | FTS5-indexed database for structured queries      |
-| `*.json`           | JSON     | Per-page metadata alongside each HTML page        |
+| File              | Format  | Purpose                                                      |
+| ----------------- | ------- | ------------------------------------------------------------ |
+| `llms.txt`      | Text    | Index of all pages per[llmstxt.org](https://llmstxt.org) spec |
+| `llms-full.txt` | Text    | Flattened text dump of all page content (≤5 MB)             |
+| `graph.jsonld`  | JSON-LD | Knowledge graph in Schema.org format                         |
+| `sitemap.xml`   | XML     | Standard sitemap for crawlers                                |
+| `llmwiki.db`    | SQLite  | FTS5-indexed database for structured queries                 |
+| `*.json`        | JSON    | Per-page metadata alongside each HTML page                   |
 
 See [docs/ai-integration.md](docs/ai-integration.md) for SQL query examples.
 
@@ -197,18 +197,18 @@ See [docs/ai-integration.md](docs/ai-integration.md) for SQL query examples.
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Architecture](docs/architecture.md) | Data model, pipeline flow, adapter system |
-| [Getting Started](docs/getting-started.md) | Step-by-step tutorial |
-| [Configuration](docs/configuration.md) | Full `llmwiki.json` reference |
-| [Adapters](docs/adapters.md) | Built-in adapters, language support, custom adapters |
-| [AI Integration](docs/ai-integration.md) | Agent files, SQL cookbook |
-| [Cross-References](docs/cross-references.md) | Edge extraction, PageRank, clusters |
-| [CLI Reference](docs/cli-reference.md) | Every command with flags and examples |
-| [FAQ](docs/faq.md) | Common questions and answers |
-| [Contributing](CONTRIBUTING.md) | Development setup, PR guidelines |
-| [Changelog](CHANGELOG.md) | Release history |
+| Guide                                       | Description                                          |
+| ------------------------------------------- | ---------------------------------------------------- |
+| [Architecture](docs/architecture.md)         | Data model, pipeline flow, adapter system            |
+| [Getting Started](docs/getting-started.md)   | Step-by-step tutorial                                |
+| [Configuration](docs/configuration.md)       | Full`llmwiki.json` reference                       |
+| [Adapters](docs/adapters.md)                 | Built-in adapters, language support, custom adapters |
+| [AI Integration](docs/ai-integration.md)     | Agent files, SQL cookbook                            |
+| [Cross-References](docs/cross-references.md) | Edge extraction, PageRank, clusters                  |
+| [CLI Reference](docs/cli-reference.md)       | Every command with flags and examples                |
+| [FAQ](docs/faq.md)                           | Common questions and answers                         |
+| [Contributing](CONTRIBUTING.md)              | Development setup, PR guidelines                     |
+| [Changelog](CHANGELOG.md)                    | Release history                                      |
 
 ---
 

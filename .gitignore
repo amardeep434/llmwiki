@@ -15,3 +15,6 @@ llmwiki.db
 *.db
 .pytest_cache/
 docs/superpowers/
+.project
+.gitignore
+.vscode/settings.json
