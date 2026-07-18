@@ -22,7 +22,7 @@ def test_detect_ides_empty(tmp_path):
 
 def test_generate_vscode_mcp(tmp_path):
     generate_vscode_mcp(tmp_path)
-    cfg = json.loads((tmp_path / ".vscode" / "mcp.json").read_text())
+    cfg = json.loads((tmp_path / ".vscode" / "mcp.json").read_text(encoding="utf-8"))
     assert "llmwiki" in cfg["servers"]
     assert cfg["servers"]["llmwiki"]["command"] == "llmwiki"
     assert "mcp" in cfg["servers"]["llmwiki"]["args"]
@@ -30,19 +30,19 @@ def test_generate_vscode_mcp(tmp_path):
 
 def test_generate_cursor_mcp(tmp_path):
     generate_cursor_mcp(tmp_path)
-    cfg = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    cfg = json.loads((tmp_path / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
     assert "llmwiki" in cfg["mcpServers"]
 
 
 def test_generate_jetbrains_mcp(tmp_path):
     generate_jetbrains_mcp(tmp_path)
-    cfg = json.loads((tmp_path / ".idea" / "ai-mcp.json").read_text())
+    cfg = json.loads((tmp_path / ".idea" / "ai-mcp.json").read_text(encoding="utf-8"))
     assert "llmwiki" in cfg["mcpServers"]
 
 
 def test_generate_windsurf_mcp(tmp_path):
     generate_windsurf_mcp(tmp_path)
-    cfg = json.loads((tmp_path / ".windsurf" / "mcp.json").read_text())
+    cfg = json.loads((tmp_path / ".windsurf" / "mcp.json").read_text(encoding="utf-8"))
     assert "llmwiki" in cfg["mcpServers"]
 
 
@@ -50,7 +50,7 @@ def test_generate_copilot_extension(tmp_path):
     generate_copilot_extension(tmp_path)
     ext = tmp_path / ".github" / "extensions" / "llmwiki-search" / "extension.mjs"
     assert ext.exists()
-    content = ext.read_text()
+    content = ext.read_text(encoding="utf-8")
     assert "llmwiki_search" in content
     assert "llmwiki search" in content
     assert "joinSession" in content

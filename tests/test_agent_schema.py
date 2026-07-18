@@ -77,7 +77,7 @@ class TestAgentSchema:
             create=True)
         agent_file = tmp_path / ".github" / "agents" / "llmwiki.agent.md"
         assert agent_file.exists()
-        content = agent_file.read_text()
+        content = agent_file.read_text(encoding="utf-8")
         assert "llmwiki_search" in content
 
     def test_write_agent_schemas(self, tmp_path):
@@ -94,7 +94,7 @@ class TestAgentSchema:
         written = write_agent_schemas(tmp_path, str(tmp_path / "site"), "Test",
             {"total_pages": 1, "total_edges": 0, "total_clusters": 0})
         assert written == []
-        assert (tmp_path / "CLAUDE.md").read_text() == existing
+        assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == existing
         assert not (tmp_path / "AGENTS.md").exists()
 
     def test_no_create_refreshes_marked_files(self, tmp_path):
@@ -105,7 +105,7 @@ class TestAgentSchema:
         # Build-style refresh with new stats, no create
         write_agent_schemas(tmp_path, str(tmp_path / "site"), "Test",
             {"total_pages": 999, "total_edges": 0, "total_clusters": 0})
-        content = (tmp_path / "CLAUDE.md").read_text()
+        content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert "999" in content
         assert content.count("<!-- llmwiki:auto -->") == 2
 
@@ -116,7 +116,7 @@ class TestAgentSchema:
         write_agent_schemas(tmp_path, str(tmp_path / "site"), "Test",
             {"total_pages": 1, "total_edges": 0, "total_clusters": 0},
             create=True)
-        content = (tmp_path / "CLAUDE.md").read_text()
+        content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert "Existing content" in content
         assert "llmwiki" in content
         # Appended section must be marked so future runs replace, not duplicate
@@ -128,7 +128,7 @@ class TestAgentSchema:
         write_agent_schemas(tmp_path, str(tmp_path / "site"), "Test",
             {"total_pages": 1, "total_edges": 0, "total_clusters": 0},
             create=True)
-        content = (tmp_path / "CLAUDE.md").read_text()
+        content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert content.count("<!-- llmwiki:auto -->") == 2
 
     def test_idempotent_update(self, tmp_path):
@@ -140,7 +140,7 @@ class TestAgentSchema:
         write_agent_schemas(tmp_path, str(tmp_path / "site"), "Test",
             {"total_pages": 999, "total_edges": 0, "total_clusters": 0},
             create=True)
-        second_content = (tmp_path / "CLAUDE.md").read_text()
+        second_content = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
         assert "999" in second_content
         # Should NOT have duplicate sections
         assert second_content.count("<!-- llmwiki:auto -->") == 2  # open + close markers

@@ -9,7 +9,7 @@ def test_enable_agent(tmp_path):
     cfg_path = tmp_path / "llmwiki.json"
     cfg_path.write_text(json.dumps(cfg))
     enable_agent(cfg_path)
-    result = json.loads(cfg_path.read_text())
+    result = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert result["agent_assist"] is True
 
 
@@ -18,7 +18,7 @@ def test_disable_agent(tmp_path):
     cfg_path = tmp_path / "llmwiki.json"
     cfg_path.write_text(json.dumps(cfg))
     disable_agent(cfg_path)
-    result = json.loads(cfg_path.read_text())
+    result = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert result["agent_assist"] is False
 
 

@@ -59,7 +59,7 @@ def test_touched_but_unchanged_file_is_fresh(project):
     """mtime change with identical content must not report stale (hash confirms)."""
     _ingest_state(project)
     f = project["src"] / "auth.py"
-    content = f.read_text()
+    content = f.read_text(encoding="utf-8")
     future = time.time() + 100
     f.write_text(content)
     import os

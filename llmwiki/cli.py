@@ -9,8 +9,24 @@ from pathlib import Path
 from llmwiki import __version__
 
 
+def _force_utf8_output() -> None:
+    """Make stdout/stderr UTF-8 so emoji/arrows don't crash on Windows.
+
+    Windows consoles default to cp1252, where any non-ASCII output raises
+    UnicodeEncodeError and kills the CLI with exit 1. errors="replace"
+    guarantees output degrades instead of crashing on exotic terminals.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
+    _force_utf8_output()
     parser = argparse.ArgumentParser(
         prog="llmwiki",
         description="Generic codebase + documentation knowledge base pipeline",
