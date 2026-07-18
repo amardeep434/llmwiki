@@ -160,7 +160,8 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
 
     try:
         c.execute("""
-            SELECT p.id, p.title, p.category, p.importance_score,
+            SELECT p.id, p.title, p.category, p.importance_score, p.language,
+                   p.body_plain,
                    snippet(pages_fts, 1, '>>>', '<<<', '...', 50) as snippet
             FROM pages_fts
             JOIN pages p ON pages_fts.rowid = p.rowid
@@ -168,7 +169,62 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
             ORDER BY rank
             LIMIT ?
         """, (query, limit))
-        results = [dict(row) for row in c.fetchall()]
+        results = []
+        for row in c.fetchall():
+            r = dict(row)
+            body = r.pop("body_plain", "") or ""
+            lang = r.get("language", "")
+            # Extract method signatures for source code pages
+            if lang:
+                sigs = _extract_signatures(body, lang)
+                if sigs:
+                    r["methods"] = sigs
+            results.append(r)
+    except sqlite3.OperationalError:
+        results = []
+
+    conn.close()
+    return results
+
+
+def search_method(db_path: Path, method_name: str, limit: int = 20) -> list[dict]:
+    """Search for a specific method/function by name across all pages.
+
+    Returns pages that contain the method with the matching signature highlighted.
+    """
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    # Search in tags (method:xyz) and body for the method name.
+    # Prioritize pages that declare the method (in tags) over pages that just reference it.
+    try:
+        c.execute("""
+            SELECT p.id, p.title, p.category, p.importance_score, p.language,
+                   p.body_plain, p.tags
+            FROM pages p
+            WHERE p.language != ''
+              AND (p.tags LIKE ? OR p.body_plain LIKE ?)
+            ORDER BY (CASE WHEN p.tags LIKE ? THEN 0 ELSE 1 END)
+            LIMIT ?
+        """, (f'%"method:{method_name}"%', f'%{method_name}%',
+              f'%"method:{method_name}"%', limit))
+
+        results = []
+        for row in c.fetchall():
+            r = dict(row)
+            body = r.pop("body_plain", "") or ""
+            r.pop("tags", None)
+            lang = r.get("language", "")
+            # Extract all signatures, filter to matching method
+            all_sigs = _extract_signatures(body, lang)
+            matching = [s for s in all_sigs if method_name in s]
+            if matching:
+                r["methods"] = matching
+                results.append(r)
     except sqlite3.OperationalError:
         results = []
 
@@ -179,6 +235,24 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
 def format_results_json(results: list[dict]) -> str:
     """Format search results as JSON array."""
     return json.dumps(results, indent=2)
+
+
+def format_results_agent(results: list[dict]) -> str:
+    """Format optimized for AI agent consumption — minimal tokens, max signal.
+
+    Includes: page ID (for llmwiki get), title, category, methods (if any).
+    Omits: verbose snippets, importance scores, language field.
+    """
+    lines = [f"{len(results)} results\n"]
+    for r in results:
+        line = f"- [{r.get('category', '')}] {r['title']} (id: {r['id']})"
+        lines.append(line)
+        if r.get("methods"):
+            for m in r["methods"]:
+                lines.append(f"    {m}")
+    lines.append("")
+    lines.append("Use `llmwiki get \"<id>\"` for full page content.")
+    return "\n".join(lines)
 
 
 def format_results_compact(results: list[dict]) -> str:
@@ -229,3 +303,89 @@ def cli_search(query: str, db_path: str) -> int:
             print(f"    {r['snippet']}")
         print()
     return 0
+
+
+def get_page(db_path: Path, page_id: str) -> dict | None:
+    """Retrieve a single page by ID with full content."""
+    if not db_path.exists():
+        return None
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT id, title, category, source_path, body_plain, tags, "
+        "importance_score, language, url FROM pages WHERE id = ?",
+        (page_id,),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return None
+    return dict(row)
+
+
+def format_page_for_agent(page: dict) -> str:
+    """Format a page for direct LLM consumption — structured and concise."""
+    body = page.get("body_plain", "")
+
+    # Extract method signatures from body for source code pages
+    signatures = _extract_signatures(body, page.get("language", ""))
+
+    parts = [
+        f"# {page['title']}",
+        f"Category: {page.get('category', '')}",
+        f"Language: {page.get('language', '')}",
+        f"Source: {page.get('source_path', '')}",
+    ]
+
+    if signatures:
+        parts.append("\n## Method Signatures\n")
+        parts.extend(f"- `{sig}`" for sig in signatures)
+
+    # Include body but strip the full source code block (too large)
+    body_trimmed = _strip_source_block(body)
+    if body_trimmed.strip():
+        parts.append(f"\n## Content\n\n{body_trimmed}")
+
+    return "\n".join(parts)
+
+
+def _extract_signatures(body: str, language: str) -> list[str]:
+    """Extract method/function signatures from the source code in body."""
+    import re
+
+    # Look for the source code inside <details> block
+    details_match = re.search(r"<details>.*?```\w*\n(.*?)```", body, re.DOTALL)
+    if not details_match:
+        return []
+
+    source = details_match.group(1)
+
+    patterns = {
+        "java": re.compile(
+            r"^\s*(?:public|protected|private)\s+(?:static\s+)?(?:synchronized\s+)?"
+            r"([\w<>\[\], ]+\s+\w+\s*\([^)]*\))",
+            re.MULTILINE,
+        ),
+        "python": re.compile(r"^\s*def\s+(\w+\s*\([^)]*\))", re.MULTILINE),
+        "javascript": re.compile(
+            r"(?:export\s+)?(?:async\s+)?function\s+(\w+\s*\([^)]*\))", re.MULTILINE
+        ),
+        "typescript": re.compile(
+            r"(?:export\s+)?(?:async\s+)?function\s+(\w+\s*\([^)]*\))", re.MULTILINE
+        ),
+    }
+
+    pat = patterns.get(language)
+    if not pat:
+        return []
+
+    matches = pat.findall(source)
+    # Clean up whitespace
+    return [" ".join(m.split()) for m in matches[:30]]
+
+
+def _strip_source_block(body: str) -> str:
+    """Remove the <details> full source block to save tokens."""
+    import re
+    return re.sub(r"<details>.*?</details>", "", body, flags=re.DOTALL).strip()

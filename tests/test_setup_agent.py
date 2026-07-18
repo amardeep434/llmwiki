@@ -48,11 +48,15 @@ def test_generate_windsurf_mcp(tmp_path):
 
 def test_generate_copilot_extension(tmp_path):
     generate_copilot_extension(tmp_path)
-    ext = tmp_path / ".github" / "extensions" / "llmwiki-search.js"
+    ext = tmp_path / ".github" / "extensions" / "llmwiki-search" / "extension.mjs"
     assert ext.exists()
     content = ext.read_text()
     assert "llmwiki_search" in content
     assert "llmwiki search" in content
+    assert "joinSession" in content
+    assert "@github/copilot-sdk/extension" in content
+    assert "commands:" in content or "commands" in content
+    assert "wikisearch" in content
 
 
 def test_setup_all(tmp_path):

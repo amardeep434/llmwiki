@@ -702,7 +702,7 @@ llmwiki setup-agent --extension
    ~/.cursor/mcp.json
    ~/.config/JetBrains/mcp-servers.json
    ~/.windsurf/mcp-config.json
-   .github/extensions/llmwiki.js (Copilot CLI extension)
+   .github/extensions/llmwiki-search/extension.mjs (Copilot CLI extension)
    .github/copilot-workspace.yml (Copilot CLI workspace config)
 
 Next steps:

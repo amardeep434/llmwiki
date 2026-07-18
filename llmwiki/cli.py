@@ -55,7 +55,22 @@ def main(argv: list[str] | None = None) -> int:
     p_search.add_argument("--config", default="llmwiki.json", help="Config file path")
     p_search.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON array")
     p_search.add_argument("--compact", action="store_true", help="Minimal output (lowest tokens)")
+    p_search.add_argument("--agent", action="store_true", help="Agent-optimized output (IDs + methods, minimal tokens)")
     p_search.add_argument("--context", action="store_true", help="Full context for LLM consumption")
+    p_search.add_argument("--method", action="store_true", help="Search for a method/function by name")
+
+    # get
+    p_get = sub.add_parser("get", help="Get a wiki page by ID")
+    p_get.add_argument("page_id", help="Page ID (from search results)")
+    p_get.add_argument("--config", default="llmwiki.json", help="Config file path")
+    p_get.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+    p_get.add_argument("--raw", action="store_true", help="Output raw body without formatting")
+
+    # query
+    p_query = sub.add_parser("query", help="Run a read-only SQL query against the wiki database")
+    p_query.add_argument("sql", help="SQL SELECT query to execute")
+    p_query.add_argument("--config", default="llmwiki.json", help="Config file path")
+    p_query.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
 
     # graph
     p_graph = sub.add_parser("graph", help="Rebuild knowledge graph")
@@ -128,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         "build": _cmd_build,
         "serve": _cmd_serve,
         "search": _cmd_search,
+        "get": _cmd_get,
+        "query": _cmd_query,
         "graph": _cmd_graph,
         "export": _cmd_export,
         "lint": _cmd_lint,
@@ -350,18 +367,29 @@ def _cmd_search(args) -> int:
     """Search the knowledge base via SQLite FTS5."""
     from llmwiki.config import load_config
     from llmwiki.search import (
-        search_pages, format_results_json, format_results_compact, format_results_context
+        search_pages, search_method,
+        format_results_json, format_results_agent,
+        format_results_compact, format_results_context,
     )
 
     cfg_path = Path(args.config)
+    # Auto-discover config: if not found at default path, check .llmwiki/
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = Path(".llmwiki") / "llmwiki.json"
+        if alt.exists():
+            cfg_path = alt
+
     if cfg_path.exists():
         config = load_config(cfg_path)
         out_dir = config.get("build", {}).get("out_dir", "site")
     else:
         out_dir = "site"
     db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
-    
-    results = search_pages(db_path, args.query)
+
+    if args.method:
+        results = search_method(db_path, args.query)
+    else:
+        results = search_pages(db_path, args.query)
     
     if not results:
         print(f"No results for: {args.query}")
@@ -370,6 +398,8 @@ def _cmd_search(args) -> int:
     # Format output based on flags
     if args.json_output:
         print(format_results_json(results))
+    elif args.agent:
+        print(format_results_agent(results))
     elif args.compact:
         print(format_results_compact(results))
     elif args.context:
@@ -379,10 +409,112 @@ def _cmd_search(args) -> int:
         print(f"Found {len(results)} results for: {args.query}\n")
         for r in results:
             print(f"  [{r.get('category', '')}] {r['title']}")
-            if r.get("snippet"):
+            if r.get("methods"):
+                for m in r["methods"]:
+                    print(f"    {m}")
+            elif r.get("snippet"):
                 print(f"    {r['snippet']}")
             print()
     
+    return 0
+
+
+def _cmd_get(args) -> int:
+    """Get a wiki page by ID with structured output."""
+    import json as json_mod
+    from llmwiki.config import load_config
+    from llmwiki.search import get_page, format_page_for_agent
+
+    cfg_path = Path(args.config)
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = Path(".llmwiki") / "llmwiki.json"
+        if alt.exists():
+            cfg_path = alt
+
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        out_dir = config.get("build", {}).get("out_dir", "site")
+    else:
+        out_dir = "site"
+    db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
+
+    page = get_page(db_path, args.page_id)
+    if not page:
+        print(f"Page not found: {args.page_id}", file=sys.stderr)
+        return 1
+
+    if args.json_output:
+        print(json_mod.dumps(page, indent=2))
+    elif args.raw:
+        print(page.get("body_plain", ""))
+    else:
+        print(format_page_for_agent(page))
+
+    return 0
+
+
+def _cmd_query(args) -> int:
+    """Run a read-only SQL query against the wiki database."""
+    import json as json_mod
+    import sqlite3
+    from llmwiki.config import load_config
+
+    # Validate read-only
+    sql_stripped = args.sql.strip().upper()
+    if not sql_stripped.startswith("SELECT") and not sql_stripped.startswith("WITH"):
+        print("Error: Only SELECT/WITH queries are allowed (read-only).", file=sys.stderr)
+        return 1
+
+    cfg_path = Path(args.config)
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = Path(".llmwiki") / "llmwiki.json"
+        if alt.exists():
+            cfg_path = alt
+
+    if cfg_path.exists():
+        config = load_config(cfg_path)
+        out_dir = config.get("build", {}).get("out_dir", "site")
+    else:
+        out_dir = "site"
+    db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
+
+    if not db_path.exists():
+        print(f"Error: Database not found at {db_path}", file=sys.stderr)
+        print("Run `llmwiki build` first.", file=sys.stderr)
+        return 1
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(args.sql)
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        conn.close()
+    except sqlite3.OperationalError as e:
+        print(f"SQL error: {e}", file=sys.stderr)
+        return 1
+
+    if not rows:
+        print("No results.")
+        return 0
+
+    if args.json_output:
+        data = [dict(row) for row in rows]
+        print(json_mod.dumps(data, indent=2))
+    else:
+        # Simple table output
+        col_widths = [len(c) for c in columns]
+        for row in rows:
+            for i, val in enumerate(row):
+                col_widths[i] = max(col_widths[i], len(str(val)[:60]))
+
+        header = " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(columns))
+        print(header)
+        print("-+-".join("-" * w for w in col_widths))
+        for row in rows:
+            line = " | ".join(str(v)[:60].ljust(col_widths[i]) for i, v in enumerate(row))
+            print(line)
+
     return 0
 
 
@@ -748,16 +880,52 @@ def _cmd_setup_agent(args) -> int:
         for path in created:
             print(f"   {path}")
 
+    # Generate agent schema files (AGENTS.md, copilot agent, etc.)
+    from llmwiki.agent_schema import write_agent_schemas
+    project_name = config.get("project", {}).get("name", project_root.name)
+    site_dir = cfg_path.parent / config.get("build", {}).get("out_dir", "site")
+    stats = {"total_pages": 0, "total_edges": 0, "total_clusters": 0}
+    # Try to read real stats from build-history
+    history_path = site_dir / "build-history.json"
+    if history_path.exists():
+        try:
+            import json
+            history = json.loads(history_path.read_text(encoding="utf-8"))
+            if history:
+                latest = history[-1] if isinstance(history, list) else history
+                stats = {
+                    "total_pages": latest.get("total_pages", 0),
+                    "total_edges": latest.get("total_edges", 0),
+                    "total_clusters": latest.get("total_clusters", 0),
+                }
+        except Exception:
+            pass
+    written = write_agent_schemas(project_root, str(site_dir), project_name, stats)
+    if written:
+        print("\n✅ Generated agent schema files:\n")
+        for path in written:
+            print(f"   {path}")
+
     # Handle --cli flag
     if args.cli:
         print("\n📝 CLI Usage Instructions:\n")
         print("   To use llmwiki from the command line:")
         print(f"   cd {project_root}/{wiki_subdir}")
         print("   llmwiki search \"your query\" --compact")
-        print("\n   For Copilot CLI extension:")
-        print("   gh copilot extensions reload")
-        print("   Then use: @llmwiki_search in your prompt")
 
-    print("\n🎉 Setup complete! Restart your IDE to load MCP configs.\n")
+    print("\n🎉 Setup complete!\n")
+    print("   Usage by environment:")
+    print("   ┌─────────────────────────────────────────────────────────────┐")
+    print("   │ Copilot CLI (terminal)                                      │")
+    print("   │   • /wikisearch <query>    — explicit slash command          │")
+    print("   │   • Just ask naturally     — tool is called automatically    │")
+    print("   │   • Requires: copilot --experimental                         │")
+    print("   ├─────────────────────────────────────────────────────────────┤")
+    print("   │ VS Code / IDE (Copilot Chat)                                │")
+    print("   │   • @llmwiki in chat       — invokes the agent               │")
+    print("   │   • Tool available via MCP — called automatically            │")
+    print("   │   • Restart IDE to load configs                              │")
+    print("   └─────────────────────────────────────────────────────────────┘")
+    print()
     return 0
 

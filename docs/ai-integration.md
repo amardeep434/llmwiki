@@ -42,7 +42,7 @@ llmwiki setup-agent --cli
 | `~/.cursor/mcp.json` | Cursor | MCP server config |
 | `~/.config/JetBrains/mcp-servers.json` | JetBrains | MCP server config |
 | `~/.windsurf/mcp-config.json` | Windsurf | MCP server config |
-| `.github/extensions/llmwiki.js` | Copilot CLI | Extension for GitHub Copilot CLI |
+| `.github/extensions/llmwiki-search/extension.mjs` | Copilot CLI | Extension for GitHub Copilot CLI |
 | `.github/copilot-workspace.yml` | Copilot CLI | Workspace config |
 
 ### MCP Tools
