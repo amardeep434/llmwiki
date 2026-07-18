@@ -387,6 +387,21 @@ Checks for:
 
 ---
 
+### `llmwiki status`
+
+Check whether the index is fresh versus the current source tree. Exits
+non-zero when stale or never built, so it can gate hooks/CI.
+
+```bash
+llmwiki status [--config PATH] [--json]
+```
+
+Reports counts of modified/new/deleted source files since the last
+ingest, with example paths. The same warning is automatically prepended
+to `search`/`get`/MCP output when the index is stale.
+
+---
+
 ### `llmwiki stats`
 
 Print inventory statistics for raw, wiki, and site directories.
@@ -568,7 +583,7 @@ llmwiki agent --status
    Run `llmwiki build` to update agent instructions.
 ```
 
-When enabled, the MCP server and IDE integrations prioritize wiki search over raw file access, reducing token usage by 90%+.
+When enabled, generated agent instructions ask agents to search the wiki before reading raw files. Savings depend on the query type — run `llmwiki benchmark` for honest numbers.
 
 ---
 

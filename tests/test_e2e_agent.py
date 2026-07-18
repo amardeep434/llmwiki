@@ -107,7 +107,7 @@ class TestBenchmark:
         result = run_benchmark(
             "login",
             source_dirs=[wiki_project["source"]],
-            wiki_dir=wiki_project["root"] / "site",
+            site_dir=wiki_project["root"] / "site",
         )
         assert result["raw_tokens"] > 0
         assert result["wiki_tokens"] >= 0
@@ -119,11 +119,11 @@ class TestBenchmark:
         result = run_benchmark(
             "login",
             source_dirs=[wiki_project["source"]],
-            wiki_dir=wiki_project["root"] / "site",
+            site_dir=wiki_project["root"] / "site",
         )
         report = format_benchmark_report(result)
         assert "login" in report
-        assert "%" in report
+        assert "Tokens" in report and "Methodology" in report
 
 
 class TestMCPServer:

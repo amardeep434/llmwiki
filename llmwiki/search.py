@@ -120,38 +120,74 @@ def _ensure_pages_columns(cursor: sqlite3.Cursor) -> None:
 
 
 def insert_page(db_path: Path, page: dict) -> None:
-    """Insert or replace a page in the search database.
+    """Insert or replace a single page in the search database."""
+    insert_pages(db_path, [page])
 
-    FTS index is kept in sync automatically via triggers created by create_search_db().
+
+def insert_pages(db_path: Path, pages: list[dict]) -> None:
+    """Insert or replace pages in one connection/transaction.
+
+    FTS index is kept in sync automatically via triggers created by
+    create_search_db(). DELETE + INSERT instead of INSERT OR REPLACE so
+    the delete trigger fires for existing rows (REPLACE = DELETE + INSERT
+    under the hood but doesn't reliably fire the AFTER DELETE trigger on
+    all SQLite builds).
     """
     conn = sqlite3.connect(str(db_path))
     c = conn.cursor()
-
-    # DELETE + INSERT instead of INSERT OR REPLACE so the delete trigger fires
-    # for existing rows (REPLACE = DELETE + INSERT under the hood but doesn't
-    # reliably fire the AFTER DELETE trigger on all SQLite builds).
-    c.execute("DELETE FROM pages WHERE id = ?", (page["id"],))
-    c.execute("""
-        INSERT INTO pages (
-            id, title, category, source_path, body_plain, tags,
-            importance_score, cluster_id, language, in_degree, url
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        page["id"], page["title"], page.get("category", ""),
-        page.get("source_path", ""), page.get("body_plain", ""), page.get("tags", "[]"),
-        page.get("importance_score", 0.0),
-        page.get("cluster_id"), page.get("language", ""),
-        page.get("in_degree", 0), page.get("url", ""),
-    ))
-
+    for page in pages:
+        c.execute("DELETE FROM pages WHERE id = ?", (page["id"],))
+        c.execute("""
+            INSERT INTO pages (
+                id, title, category, source_path, body_plain, tags,
+                importance_score, cluster_id, language, in_degree, url
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            page["id"], page["title"], page.get("category", ""),
+            page.get("source_path", ""), page.get("body_plain", ""), page.get("tags", "[]"),
+            page.get("importance_score", 0.0),
+            page.get("cluster_id"), page.get("language", ""),
+            page.get("in_degree", 0), page.get("url", ""),
+        ))
     conn.commit()
     conn.close()
 
 
+def sanitize_fts_query(query: str) -> str:
+    """Convert a natural-language query into a safe FTS5 MATCH expression.
+
+    Raw user/agent queries routinely contain FTS5 syntax characters
+    (colons, hyphens, quotes, question marks) that raise OperationalError
+    and previously surfaced as a silent "no results". Each token is
+    stripped to alphanumerics/underscores and double-quoted so FTS5
+    treats it as a plain term; tokens are joined with OR so partial
+    matches still rank (BM25 puts full matches first).
+    """
+    import re
+    tokens = [re.sub(r"[^\w]", "", t) for t in query.split()]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return ""
+    return " OR ".join(f'"{t}"' for t in tokens)
+
+
 def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
-    """Full-text search against the FTS5 index."""
+    """Full-text search against the FTS5 index.
+
+    ``method:<name>`` queries are routed to :func:`search_method` so the
+    documented agent workflow works (a bare colon is FTS5 column syntax
+    and would otherwise error).
+    """
     if not db_path.exists():
+        return []
+
+    stripped = query.strip()
+    if stripped.lower().startswith("method:"):
+        return search_method(db_path, stripped.split(":", 1)[1].strip(), limit)
+
+    match_expr = sanitize_fts_query(query)
+    if not match_expr:
         return []
 
     conn = sqlite3.connect(str(db_path))
@@ -168,7 +204,7 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
             WHERE pages_fts MATCH ?
             ORDER BY rank
             LIMIT ?
-        """, (query, limit))
+        """, (match_expr, limit))
         results = []
         for row in c.fetchall():
             r = dict(row)
@@ -180,11 +216,27 @@ def search_pages(db_path: Path, query: str, limit: int = 20) -> list[dict]:
                 if sigs:
                     r["methods"] = sigs
             results.append(r)
-    except sqlite3.OperationalError:
-        results = []
+    except sqlite3.OperationalError as e:
+        import sys
+        print(f"llmwiki: search error ({e}); falling back to substring scan",
+              file=sys.stderr)
+        results = _like_search(conn, query, limit)
 
     conn.close()
     return results
+
+
+def _like_search(conn: sqlite3.Connection, query: str, limit: int) -> list[dict]:
+    """Substring fallback when the FTS expression cannot be executed."""
+    c = conn.cursor()
+    rows = c.execute("""
+        SELECT id, title, category, importance_score, language
+        FROM pages
+        WHERE title LIKE ? OR body_plain LIKE ?
+        ORDER BY importance_score DESC
+        LIMIT ?
+    """, (f"%{query}%", f"%{query}%", limit)).fetchall()
+    return [dict(row) for row in rows]
 
 
 def search_method(db_path: Path, method_name: str, limit: int = 20) -> list[dict]:
@@ -273,7 +325,9 @@ def format_results_context(results: list[dict], db_path: Path) -> str:
             "SELECT body_plain, tags, url FROM pages WHERE id = ?", (r["id"],)
         ).fetchone()
         if row:
-            body = row["body_plain"] or ""
+            # Strip the embedded full-source <details> block — context output
+            # should be the structured summary, not the whole source file.
+            body = _strip_source_block(row["body_plain"] or "")
             tags = row["tags"] or "[]"
             url = row["url"] or ""
             parts.append(

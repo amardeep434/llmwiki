@@ -100,8 +100,14 @@ def write_agent_schemas(
     wiki_path: str,
     project_name: str,
     stats: dict,
+    create: bool = False,
 ) -> list[str]:
     """Write agent schema files for all detected agents.
+
+    With ``create=False`` (the default, used by `llmwiki build`), only
+    files that already contain the llmwiki marker are refreshed — build
+    never silently creates or appends to a project's instruction files.
+    ``create=True`` (used by `llmwiki setup-agent`) creates/appends too.
 
     Returns a list of file paths that were written.
     """
@@ -141,6 +147,8 @@ def write_agent_schemas(
     for agent_key, (filepath, generator) in generators.items():
         if agent_key not in detected:
             continue
+        if not create and not _has_marker(filepath):
+            continue  # build refreshes existing sections only
         content = generator(project_name, wiki_path, stats, agent_assist)
         _write_or_append(filepath, content)
         written.append(str(filepath))
@@ -148,13 +156,21 @@ def write_agent_schemas(
     return written
 
 
+def _has_marker(filepath: Path) -> bool:
+    if not filepath.exists():
+        return False
+    try:
+        return _LLMWIKI_MARKER in filepath.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
 def _write_or_append(filepath: Path, llmwiki_section: str) -> None:
     """Write or append the llmwiki section to a file.
 
-    - If the file exists and contains ``_LLMWIKI_MARKER``, replaces
-      the marked section (idempotent update).
-    - If the file exists without markers, appends the section.
-    - If the file does not exist, creates it with just the section.
+    The section is ALWAYS wrapped in ``_LLMWIKI_MARKER`` comments —
+    including on first creation — so every later run replaces the marked
+    section in place instead of appending duplicates.
     """
     filepath.parent.mkdir(parents=True, exist_ok=True)
     marked = f"\n\n{_LLMWIKI_MARKER}\n{llmwiki_section}\n{_LLMWIKI_MARKER}\n"
@@ -172,7 +188,7 @@ def _write_or_append(filepath: Path, llmwiki_section: str) -> None:
         else:
             filepath.write_text(existing + marked, encoding="utf-8")
     else:
-        filepath.write_text(llmwiki_section, encoding="utf-8")
+        filepath.write_text(marked.lstrip("\n"), encoding="utf-8")
 
 
 def _generate_agent_guide(title: str, project_name: str, wiki_path: str, stats: dict, agent_assist: bool = False) -> str:
@@ -190,66 +206,25 @@ def _generate_agent_guide(title: str, project_name: str, wiki_path: str, stats: 
             wiki_rel = ".llmwiki/site"
             break
 
-    # Build the wiki-first section if agent_assist is enabled
-    wiki_first_section = ""
+    # Wiki-first line only when the user explicitly enabled agent_assist
+    wiki_first_line = ""
     if agent_assist:
-        wiki_first_section = """
-## Knowledge Base (Wiki-First Mode)
+        wiki_first_line = (
+            "Search the wiki BEFORE reading source files; "
+            "read raw files only when the wiki doesn't answer.\n"
+        )
 
-BEFORE reading any source file, search the knowledge base using the
-`wiki_search` MCP tool (preferred) or CLI:
-  llmwiki search "<your question>" --context
+    # Deliberately compact: this block lands in every conversation's
+    # context, so it must cost almost nothing.
+    return f"""## {project_name or "Project"} knowledge base (llmwiki)
 
-This returns pre-processed summaries with cross-references and method lists.
-Only read raw source files if the wiki search doesn't answer your question.
-
-"""
-
-    return f"""# {title} for {project_name}
-
-{total_pages} pages, {total_edges} cross-references, {total_clusters} clusters
-
-## How to Search the Wiki
-
-Try each method in order. Use the first one that works:
-
-### 1. MCP tool (preferred in IDE — VS Code, Cursor, JetBrains)
-Call the `wiki_search` or `llmwiki_search` MCP tool with your query.
-Returns structured results directly. No file parsing needed.
-
-### 2. CLI command (works in any terminal — Copilot CLI, IDE terminal, shell)
-Run in terminal:
-```bash
-llmwiki search "<query>" --agent
-llmwiki search "<method-name>" --method
+{total_pages} pages, {total_edges} cross-refs indexed from this repo's code + docs (PDFs included).
+{wiki_first_line}```bash
+llmwiki search "<query>" --agent      # find pages (use: python -m llmwiki if not on PATH)
+llmwiki get "<page-id>"               # full page content, source-stripped
+llmwiki search "method:<name>" --agent  # locate a function/method
+llmwiki status                        # check index freshness after editing files
 ```
-Always use `--agent` flag for token-efficient output (IDs + method signatures).
-The `--method` flag searches specifically for method/function declarations.
-Do NOT use sqlite3 — it may not be installed. Use `llmwiki` commands instead.
-
-To get full page content after finding a result:
-```bash
-llmwiki get "<page-id>"
-```
-Returns structured content with method signatures extracted — no source file reading needed.
-
-For advanced DB queries:
-```bash
-llmwiki query "SELECT title, category FROM pages_fts WHERE pages_fts MATCH '<term>'" --json
-```
-Read-only. Do NOT use sqlite3 directly — use `llmwiki query` instead.
-
-### 3. Read search-index.json (last resort — no tools available)
-Read `{wiki_rel}/search-index.json` and search the `.entries[]` array.
-Each entry has: `id`, `title`, `category`, `tags`, `body` (first 1200 chars).
-
-## Key Files (reference only)
-
-| File | Purpose |
-|------|---------|
-| `{wiki_rel}/search-index.json` | Search index — entries in `.entries[]` array |
-| `{wiki_rel}/cross-references.json` | Knowledge graph (nodes, edges, clusters) |
-| `{wiki_rel}/llmwiki.db` | SQLite FTS5 database (use `llmwiki query`, not sqlite3) |
-{wiki_first_section}
-> llms.txt, llms-full.txt, graph.jsonld, sitemap.xml require `llmwiki export` — not generated by `llmwiki build` alone.
-"""
+Heed any "index is STALE" warning in output — then prefer raw files or run `llmwiki all`.
+No CLI available? Read `{wiki_rel}/llms.txt` (index) or `{wiki_rel}/search-index.json` (entries[].body, truncated).
+MCP (optional, if configured): tools `llmwiki_search`, `llmwiki_get_page`, `llmwiki_find_method`."""

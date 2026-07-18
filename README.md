@@ -1,8 +1,10 @@
 # LLMWiki
 
-**Transform any codebase + PDF documentation into a searchable, interlinked knowledge base.**
+**Make your un-greppable knowledge — PDFs, vendor docs, XML config, architecture — searchable by any AI coding agent. No MCP required.**
 
-LLMWiki is a zero-config pipeline that ingests source code (30+ languages), XML, PDFs, Markdown, and config files, then generates a static HTML site with full-text search, a knowledge graph with PageRank scoring, and AI-ready exports — all with just 2 pip dependencies.
+AI agents are good at grepping source code. They cannot grep a 400-page PDF, a vendor's XML configuration, or the architectural picture spread across both. LLMWiki ingests source code (30+ languages), XML, PDFs, Markdown, and config files into one FTS5-searchable knowledge base with a cross-reference graph, then exposes it three ways — plain CLI (works in any locked-down environment), static files (`llms.txt`, JSON index), and optionally MCP. Just 2 pip dependencies.
+
+**Honesty note on token savings:** for questions answered by docs/PDFs/config, searching the wiki is dramatically cheaper than an agent flailing through raw files (which it often can't read at all). For plain source-code questions, modern agents' own grep-and-read is already efficient — the wiki helps with navigation (method → file lookup, cross-references) rather than replacing file reads. `llmwiki benchmark "<query>"` measures your actual numbers against a realistic grep-and-read baseline and will honestly tell you when the wiki is *not* cheaper.
 
 ---
 
@@ -85,6 +87,7 @@ llmwiki init --source C:\path\to\your\project
 | `llmwiki export`               | Generate AI-consumable exports                            |
 | `llmwiki lint`                 | Check for broken links and orphaned pages                 |
 | `llmwiki stats`                | Print inventory statistics                                |
+| `llmwiki status`               | Check index freshness vs the source tree                  |
 | `llmwiki themes`               | List available UI themes                                  |
 | `llmwiki add-source <path>`    | Add a source directory or PDF folder to config            |
 | `llmwiki all`                  | Full pipeline: ingest → build → graph → export → lint |
@@ -120,7 +123,7 @@ See [docs/cli-reference.md](docs/cli-reference.md) for flags and examples.
 - **Build history**: root + site `build-history.json` log each build summary
 - **Cross-platform**: works on Windows, macOS, and Linux
 - **Minimal dependencies**: just `markdown` + `pymupdf` (everything else is stdlib)
-- **AI agent integration**: MCP server for IDE integration (VS Code, Cursor, JetBrains, Windsurf), wiki-first agent behavior with 90%+ token savings, CLI extension generation for GitHub Copilot
+- **AI agent integration**: MCP server for IDE integration (VS Code, Cursor, JetBrains, Windsurf), CLI-first agent access (no MCP required), staleness warnings, honest token benchmarking, CLI extension generation for GitHub Copilot
 
 ---
 
@@ -148,29 +151,42 @@ See [docs/configuration.md](docs/configuration.md) for the full reference.
 
 ## AI Agent Integration
 
-LLMWiki includes powerful AI agent integration features that enable your IDE's AI assistant to leverage the wiki instead of reading raw files, reducing token usage by 90%+.
+Three access tiers, in order of universality. **The CLI is the primary interface** — many organizations cannot enable MCP servers, so everything works without one.
 
-### MCP Server for IDE Integration
-
-Start the MCP server to connect your IDE (VS Code, Cursor, JetBrains, Windsurf) to the wiki:
+### 1. CLI (works everywhere an agent has a shell)
 
 ```bash
-llmwiki mcp
+llmwiki search "<query>" --agent        # token-lean results: IDs + method signatures
+llmwiki get "<page-id>"                 # full page, embedded source stripped
+llmwiki search "method:<name>" --agent  # locate a function/method declaration
+llmwiki status                          # is the index fresh vs the source tree?
+llmwiki query "SELECT ..." --json       # read-only SQL over the FTS5 database
 ```
 
-Generate IDE configuration files:
+If `llmwiki` isn't on PATH (locked-down environments), every command also works as `python -m llmwiki ...`.
+
+Add a compact (~15 line) instruction block to your agent files (CLAUDE.md, AGENTS.md, copilot-instructions.md) — **opt-in, never automatic**:
 
 ```bash
-llmwiki setup-agent --all
+llmwiki setup-agent --cli
 ```
 
-Enable wiki-first agent behavior:
+### 2. Static files (no tools at all)
+
+`llms.txt` (index), `llms-full.txt`, `search-index.json`, per-page `.json`, `graph.jsonld` — any agent that can read files can use the wiki.
+
+### 3. MCP server (bonus, where IDEs allow it)
 
 ```bash
-llmwiki agent --enable
+llmwiki mcp                 # stdio JSON-RPC server backed by the same FTS5 database
+llmwiki setup-agent --mcp   # generate configs for VS Code / Cursor / JetBrains / Windsurf
 ```
 
-Measure token savings:
+### Staleness protection
+
+The wiki is a build artifact; code changes constantly during agent sessions. Every search/get/MCP response is preceded by a **STALE INDEX warning** when source files changed since the last ingest, telling the agent to prefer raw files or re-run `llmwiki all`. Check anytime with `llmwiki status`.
+
+Measure your real token numbers (honest grep-and-read baseline, methodology printed):
 
 ```bash
 llmwiki benchmark "authentication flow"

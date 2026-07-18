@@ -6,7 +6,7 @@ LLMWiki generates several file formats specifically designed for consumption by 
 
 ## MCP Server for IDE Integration
 
-LLMWiki includes an MCP (Model Context Protocol) server that enables IDEs to query the wiki directly, reducing token usage by 90%+ compared to reading raw files.
+LLMWiki includes an MCP (Model Context Protocol) server that enables IDEs to query the wiki directly. MCP is optional — the CLI and static files provide the same data in environments where MCP servers cannot be enabled (common in large organizations).
 
 ### Starting the MCP Server
 

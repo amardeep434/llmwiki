@@ -54,10 +54,9 @@ def ingest_source(
                 counts["unchanged"] += 1
                 continue
 
-            # Extract pages — enable BeanShell extraction for XML adapter
+            # BeanShell-in-XML extraction is a SailPoint IIQ idiom; keep it
+            # opt-in so generic XML sources don't grow bogus script pages.
             adapter_config = dict(config)
-            if adapter.name == "xml":
-                adapter_config.setdefault("extract_beanshell", True)
             try:
                 pages = adapter.extract(fpath, adapter_config)
             except Exception as e:

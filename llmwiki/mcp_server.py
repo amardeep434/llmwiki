@@ -126,13 +126,59 @@ def _handle_tool_call(req_id, tool_name: str, args: dict, wiki_dir: str) -> dict
         return _response(req_id, {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True})
 
 
+def _db_path(wiki: Path) -> Path:
+    return wiki / "llmwiki.db"
+
+
+def _freshness_prefix(wiki: Path) -> str:
+    """Staleness warning line to prepend to tool output ('' when fresh)."""
+    try:
+        from llmwiki.config import load_config
+        from llmwiki.freshness import check_freshness, format_freshness_warning
+
+        cfg_path = wiki.parent / "llmwiki.json"
+        state_path = wiki.parent / ".llmwiki-state.json"
+        if not cfg_path.exists():
+            return ""
+        warning = format_freshness_warning(
+            check_freshness(load_config(cfg_path), state_path)
+        )
+        return warning + "\n\n" if warning else ""
+    except Exception:
+        return ""
+
+
 def _tool_search(wiki: Path, args: dict) -> str:
-    """Search the knowledge base."""
+    """Search the knowledge base via FTS5, falling back to the JSON index."""
     query = args.get("query", "")
     limit = args.get("limit", 10)
     if not query:
         return "Error: query is required"
 
+    db = _db_path(wiki)
+    if db.exists():
+        from llmwiki.search import search_pages
+
+        results = search_pages(db, query, limit=limit)
+        if not results:
+            return f"No results for: {query}"
+        payload = [
+            {
+                "id": r.get("id"),
+                "title": r.get("title", ""),
+                "category": r.get("category", ""),
+                "snippet": r.get("snippet", ""),
+                "methods": r.get("methods", []),
+            }
+            for r in results
+        ]
+        return _freshness_prefix(wiki) + json.dumps(payload, indent=2)
+
+    return _index_search(wiki, query, limit)
+
+
+def _index_search(wiki: Path, query: str, limit: int) -> str:
+    """Fallback keyword search over search-index.json (no DB built)."""
     idx_path = wiki / "search-index.json"
     if not idx_path.exists():
         return "No search index found. Run `llmwiki all` to build the wiki."
@@ -146,11 +192,11 @@ def _tool_search(wiki: Path, args: dict) -> str:
         text = f"{entry.get('title', '')} {entry.get('body', '')} {' '.join(entry.get('tags', []))}".lower()
         if any(kw in text for kw in keywords):
             results.append({
+                "id": entry.get("id"),
                 "title": entry.get("title", ""),
                 "category": entry.get("category", ""),
                 "url": entry.get("url", ""),
                 "importance": entry.get("importance", 0),
-                "tags": entry.get("tags", []),
                 "snippet": entry.get("body", "")[:200],
             })
     results.sort(key=lambda x: x["importance"], reverse=True)
@@ -162,20 +208,33 @@ def _tool_search(wiki: Path, args: dict) -> str:
 
 
 def _tool_get_page(wiki: Path, args: dict) -> str:
-    """Get full page content by ID or title."""
+    """Get full page content by ID or title (full body, source-stripped)."""
     page_id = args.get("id", "")
     title = args.get("title", "")
     if not page_id and not title:
         return "Error: either 'id' or 'title' is required"
 
+    db = _db_path(wiki)
+    if db.exists():
+        from llmwiki.search import get_page, format_page_for_agent, search_pages
+
+        page = get_page(db, page_id) if page_id else None
+        if page is None and title:
+            for candidate in search_pages(db, title, limit=5):
+                if candidate.get("title", "").lower() == title.lower():
+                    page = get_page(db, candidate["id"])
+                    break
+        if page is None:
+            return f"Page not found: {page_id or title}"
+        return _freshness_prefix(wiki) + format_page_for_agent(page)
+
+    # Fallback: JSON index (bodies truncated at build time)
     idx_path = wiki / "search-index.json"
     if not idx_path.exists():
         return "No search index found."
 
     data = json.loads(idx_path.read_text(encoding="utf-8"))
-    entries = data.get("entries", [])
-
-    for entry in entries:
+    for entry in data.get("entries", []):
         if (page_id and entry.get("id") == page_id) or \
            (title and entry.get("title", "").lower() == title.lower()):
             return json.dumps({
@@ -186,6 +245,7 @@ def _tool_get_page(wiki: Path, args: dict) -> str:
                 "tags": entry.get("tags", []),
                 "importance": entry.get("importance", 0),
                 "body": entry.get("body", ""),
+                "note": "truncated index body — build llmwiki.db for full content",
             }, indent=2)
 
     return f"Page not found: {page_id or title}"
@@ -211,6 +271,25 @@ def _tool_find_method(wiki: Path, args: dict) -> str:
     name = args.get("name", "")
     if not name:
         return "Error: method name is required"
+
+    db = _db_path(wiki)
+    if db.exists():
+        from llmwiki.search import search_method
+
+        results = search_method(db, name)
+        if not results:
+            return f"No pages found with method: {name}"
+        payload = [
+            {
+                "id": r.get("id"),
+                "title": r.get("title", ""),
+                "category": r.get("category", ""),
+                "methods": r.get("methods", []),
+            }
+            for r in results
+        ]
+        return _freshness_prefix(wiki) + json.dumps(payload, indent=2)
+
     idx_path = wiki / "search-index.json"
     if not idx_path.exists():
         return "No search index found."
