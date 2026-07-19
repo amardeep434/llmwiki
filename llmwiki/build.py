@@ -19,7 +19,7 @@ from llmwiki.render.html import (
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
 from llmwiki.render.themes import get_theme, get_all_js_themes, get_theme_labels, get_color_options
-from llmwiki.search import create_search_db, insert_page
+from llmwiki.search import create_search_db, insert_pages
 
 
 def build_site(root: Path, config: dict, full: bool = False) -> dict:
@@ -47,7 +47,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
 
     # 1. Optionally build knowledge graph from raw/
     if cross_refs_enabled:
-        graph = build_graph(raw_dir)
+        graph = build_graph(raw_dir, config)
         save_graph(graph, site_dir / "cross-references.json")
     else:
         graph = {"nodes": [], "edges": [], "clusters": [], "stats": {
@@ -169,8 +169,12 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # Build generic content type groups (Tier 1 + Tier 2 sub-categories)
     content_type_groups = _build_content_type_groups(pages, categories)
 
-    # Token efficiency stats
-    wiki_tokens = sum(len(pdata.get("body", "")) for pdata in pages.values()) // 4
+    # Token stats: count the summary layer only (embedded full-source
+    # <details> blocks excluded), which is what agents actually consume.
+    from llmwiki.search import _strip_source_block
+    wiki_tokens = sum(
+        len(_strip_source_block(pdata.get("body", ""))) for pdata in pages.values()
+    ) // 4
     raw_source_tokens = 0
     for source in config.get("sources", []):
         src_path = Path(source["path"])
@@ -292,8 +296,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # cleaner plain text for higher-quality full-text search results.
     db_path = site_dir / "llmwiki.db"
     create_search_db(db_path)
-    for pid, pdata in pages.items():
-        insert_page(db_path, {
+    insert_pages(db_path, [
+        {
             "id": pid,
             "title": pdata.get("title", ""),
             "category": pdata.get("category", ""),
@@ -305,7 +309,9 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             "language": pdata.get("language", ""),
             "in_degree": pdata.get("in_degree", 0),
             "url": pdata.get("url", ""),
-        })
+        }
+        for pid, pdata in pages.items()
+    ])
 
     # 13. Generate graph.html (interactive knowledge graph)
     graph_html = render_graph_page(graph,

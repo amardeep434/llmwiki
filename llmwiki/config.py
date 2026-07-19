@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 DEFAULT_EXCLUDE = [
-    "node_modules", ".git", "build", "dist", "__pycache__",
+    # .llmwiki first: the wiki must never ingest its own output
+    ".llmwiki", "node_modules", ".git", "build", "dist", "__pycache__",
     "*.min.js", "*.min.css", "*.map", "*.lock", ".venv", "venv",
     "*.pyc", "*.class", "*.o", "*.so", "*.dll",
     "*.jpg", "*.png", "*.gif", "*.ico", "*.svg",

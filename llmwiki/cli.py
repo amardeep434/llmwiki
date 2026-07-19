@@ -9,8 +9,24 @@ from pathlib import Path
 from llmwiki import __version__
 
 
+def _force_utf8_output() -> None:
+    """Make stdout/stderr UTF-8 so emoji/arrows don't crash on Windows.
+
+    Windows consoles default to cp1252, where any non-ASCII output raises
+    UnicodeEncodeError and kills the CLI with exit 1. errors="replace"
+    guarantees output degrades instead of crashing on exotic terminals.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point."""
+    _force_utf8_output()
     parser = argparse.ArgumentParser(
         prog="llmwiki",
         description="Generic codebase + documentation knowledge base pipeline",
@@ -24,6 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("--source", default=None, help="Path to source codebase (prompted if not given)")
     p_init.add_argument("--name", help="Project name (auto-detected if not given)")
     p_init.add_argument("--output", default=None, help="Where to create the wiki (default: <source>/.llmwiki/)")
+    p_init.add_argument("--yes", "-y", action="store_true",
+                        help="Non-interactive: accept defaults, skip prompts (implied when stdin is not a TTY)")
 
     # ingest
     p_ingest = sub.add_parser("ingest", help="Run adapters to populate raw/")
@@ -88,6 +106,11 @@ def main(argv: list[str] | None = None) -> int:
     p_stats = sub.add_parser("stats", help="Print inventory statistics")
     p_stats.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # status
+    p_status = sub.add_parser("status", help="Check whether the index is fresh vs the source tree")
+    p_status.add_argument("--config", default="llmwiki.json", help="Config file path")
+    p_status.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+
     # themes
     sub.add_parser("themes", help="List available UI themes")
 
@@ -150,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         "lint": _cmd_lint,
         "all": _cmd_all,
         "stats": _cmd_stats,
+        "status": _cmd_status,
         "themes": _cmd_themes,
         "clean": _cmd_clean,
         "add-source": _cmd_add_source,
@@ -172,6 +196,9 @@ def _cmd_init(args) -> int:
     from llmwiki.config import create_default_config, save_config
     from llmwiki.adapters import detect_adapters
 
+    # Agents and CI pipe stdin — never block on prompts there.
+    interactive = not getattr(args, "yes", False) and sys.stdin.isatty()
+
     print("═" * 50)
     print("  LLMWiki Project Setup")
     print("═" * 50)
@@ -179,6 +206,9 @@ def _cmd_init(args) -> int:
     # 1. Source code path
     if args.source:
         source = Path(args.source).resolve()
+    elif not interactive:
+        print("Error: --source is required in non-interactive mode", file=sys.stderr)
+        return 1
     else:
         print("\n📁 Source Code Path")
         print("   Enter the root directory of your codebase:")
@@ -196,16 +226,19 @@ def _cmd_init(args) -> int:
     name = args.name
     if not name:
         default_name = source.name
-        print(f"\n📝 Project Name (default: {default_name})")
-        raw_name = input(f"   > ").strip()
-        name = raw_name or default_name
+        if interactive:
+            print(f"\n📝 Project Name (default: {default_name})")
+            raw_name = input(f"   > ").strip()
+            name = raw_name or default_name
+        else:
+            name = default_name
 
     # 3. Additional source directories
     sources = [{"path": str(source), "type": "auto", "exclude": []}]
     print(f"\n📂 Additional Source Directories")
     print("   Add extra directories (e.g. shared libs, separate docs repos).")
     print("   Press Enter with empty path when done.")
-    while True:
+    while interactive:
         extra = input("   Additional path (or Enter to skip): ").strip()
         if not extra:
             break
@@ -221,7 +254,7 @@ def _cmd_init(args) -> int:
     print(f"\n📄 PDF Documentation")
     print("   Add PDF files or directories containing PDFs.")
     print("   Press Enter with empty path when done.")
-    while True:
+    while interactive:
         pdf_path = input("   PDF path (or Enter to skip): ").strip()
         if not pdf_path:
             break
@@ -268,15 +301,7 @@ def _cmd_init(args) -> int:
     print(f"\n✅ Created {cfg_path}")
     print(f"✅ Created raw/, wiki/, site/ in {output}")
 
-    # Generate agent schema files
-    from llmwiki.agent_schema import write_agent_schemas
-
-    written = write_agent_schemas(
-        source, str(output / "site"), name,
-        {"total_pages": 0, "total_edges": 0, "total_clusters": 0},
-    )
-    for f in written:
-        print(f"✅ Generated {f}")
+    print("\nℹ️  To add wiki instructions to CLAUDE.md/AGENTS.md (opt-in), run: llmwiki setup-agent --cli")
 
     print(f"\n🚀 Next steps:")
     print(f"   cd {output}")
@@ -343,7 +368,8 @@ def _cmd_build(args) -> int:
     print(f"  Pages: {result.get('total_pages', 0)}")
     print(f"  Categories: {result.get('total_categories', 0)}")
 
-    # Update agent schemas with real stats
+    # Refresh stats in agent instruction files that already opted in
+    # (contain the llmwiki marker). Build never creates new ones.
     from llmwiki.agent_schema import write_agent_schemas
 
     source_path = config["sources"][0]["path"] if config.get("sources") else str(root)
@@ -352,6 +378,7 @@ def _cmd_build(args) -> int:
         Path(source_path), str(site_dir),
         config.get("project", {}).get("name", ""),
         result,
+        create=False,
     )
 
     return 0
@@ -361,6 +388,19 @@ def _cmd_serve(args) -> int:
     """Serve the site locally."""
     from llmwiki.serve import serve_site
     return serve_site("site", port=args.port, host=args.host)
+
+
+def _print_freshness_warning(config: dict, cfg_path: Path) -> None:
+    """Print a staleness warning to stdout so agents see it with results."""
+    from llmwiki.freshness import check_freshness, format_freshness_warning
+
+    state_path = cfg_path.parent / ".llmwiki-state.json"
+    try:
+        warning = format_freshness_warning(check_freshness(config, state_path))
+    except Exception:
+        return
+    if warning:
+        print(warning + "\n")
 
 
 def _cmd_search(args) -> int:
@@ -386,11 +426,14 @@ def _cmd_search(args) -> int:
         out_dir = "site"
     db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
 
+    if cfg_path.exists():
+        _print_freshness_warning(config, cfg_path)
+
     if args.method:
         results = search_method(db_path, args.query)
     else:
         results = search_pages(db_path, args.query)
-    
+
     if not results:
         print(f"No results for: {args.query}")
         return 0
@@ -438,6 +481,9 @@ def _cmd_get(args) -> int:
         out_dir = "site"
     db_path = Path(cfg_path.parent if cfg_path.exists() else ".") / out_dir / "llmwiki.db"
 
+    if cfg_path.exists():
+        _print_freshness_warning(config, cfg_path)
+
     page = get_page(db_path, args.page_id)
     if not page:
         print(f"Page not found: {args.page_id}", file=sys.stderr)
@@ -484,7 +530,9 @@ def _cmd_query(args) -> int:
         return 1
 
     try:
-        conn = sqlite3.connect(str(db_path))
+        # mode=ro enforces read-only at the SQLite level, so the prefix
+        # check above is a UX nicety rather than the security boundary.
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(args.sql)
         rows = cursor.fetchall()
@@ -547,7 +595,7 @@ def _cmd_graph(args) -> int:
     raw_dir = root / "raw"
     site_dir = root / config.get("build", {}).get("out_dir", "site")
     print("📊 Building knowledge graph...")
-    graph = build_graph(raw_dir)
+    graph = build_graph(raw_dir, config)
     save_graph(graph, site_dir / "cross-references.json")
     print(f"  Nodes: {graph['stats']['total_pages']}")
     print(f"  Edges: {graph['stats']['total_edges']}")
@@ -568,7 +616,7 @@ def _cmd_export(args) -> int:
     site_dir = root / config.get("build", {}).get("out_dir", "site")
     pages = _load_pages(raw_dir)
     # Build graph for edge data in graph.jsonld export
-    graph = build_graph(raw_dir)
+    graph = build_graph(raw_dir, config)
     for pid, pdata in pages.items():
         cat = (pdata.get("category", "") or "uncategorized").lower()
         slug = pid.split("/")[-1] if "/" in pid else pid
@@ -593,7 +641,7 @@ def _cmd_lint(args) -> int:
     root = cfg_path.parent
     raw_dir = root / "raw"
     print("🔍 Linting wiki...")
-    graph = build_graph(raw_dir)
+    graph = build_graph(raw_dir, config)
     issues = lint_wiki(raw_dir, graph)
     for issue in issues:
         icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(issue["severity"], "•")
@@ -601,6 +649,38 @@ def _cmd_lint(args) -> int:
     if not issues:
         print("  ✅ No issues found.")
     return 1 if any(i["severity"] == "error" for i in issues) else 0
+
+
+def _cmd_status(args) -> int:
+    """Report index freshness vs the current source tree."""
+    import json as json_mod
+    from llmwiki.config import load_config
+    from llmwiki.freshness import check_freshness, format_freshness_warning
+
+    cfg_path = Path(args.config)
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = Path(".llmwiki") / "llmwiki.json"
+        if alt.exists():
+            cfg_path = alt
+    if not cfg_path.exists():
+        print("No llmwiki.json found — run `llmwiki init` first.", file=sys.stderr)
+        return 1
+
+    config = load_config(cfg_path)
+    state_path = cfg_path.parent / ".llmwiki-state.json"
+    freshness = check_freshness(config, state_path)
+
+    if args.json_output:
+        print(json_mod.dumps(freshness, indent=2))
+    else:
+        warning = format_freshness_warning(freshness)
+        if warning:
+            print(warning)
+            for example in freshness.get("examples", []):
+                print(f"  - {example}")
+        else:
+            print("✅ Index is fresh — wiki matches the current source tree.")
+    return 1 if freshness.get("stale") or freshness.get("never_built") else 0
 
 
 def _cmd_stats(args) -> int:
@@ -799,7 +879,7 @@ def _cmd_benchmark(args) -> int:
     if not wiki_dir.exists():
         print("Error: site not built yet. Run `llmwiki all` first.", file=sys.stderr)
         return 1
-    result = run_benchmark(args.query, source_dirs=source_dirs, wiki_dir=wiki_dir)
+    result = run_benchmark(args.query, source_dirs=source_dirs, site_dir=wiki_dir)
     print(format_benchmark_report(result))
     return 0
 
@@ -809,6 +889,10 @@ def _cmd_mcp(args) -> int:
     from llmwiki.mcp_server import run_server
     from llmwiki.config import load_config
     cfg_path = Path(args.config).resolve()
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = (Path(".llmwiki") / "llmwiki.json").resolve()
+        if alt.exists():
+            cfg_path = alt
     if cfg_path.exists():
         config = load_config(cfg_path)
         out_dir = config.get("build", {}).get("out_dir", "site")
@@ -900,7 +984,7 @@ def _cmd_setup_agent(args) -> int:
                 }
         except Exception:
             pass
-    written = write_agent_schemas(project_root, str(site_dir), project_name, stats)
+    written = write_agent_schemas(project_root, str(site_dir), project_name, stats, create=True)
     if written:
         print("\n✅ Generated agent schema files:\n")
         for path in written:

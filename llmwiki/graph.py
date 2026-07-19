@@ -10,12 +10,17 @@ from llmwiki.importance import compute_importance
 from llmwiki.clusters import detect_clusters
 
 
-def build_graph(raw_dir: Path) -> dict:
+def build_graph(raw_dir: Path, config: dict | None = None) -> dict:
     """Build knowledge graph from raw/ markdown files.
 
     Returns dict with nodes, edges, clusters, stats.
     """
-    pages = _load_pages(raw_dir)
+    from llmwiki.crossref import compile_custom_patterns
+
+    custom_patterns = compile_custom_patterns(
+        (config or {}).get("cross_references", {}).get("custom_patterns")
+    )
+    pages = _load_pages(raw_dir, custom_patterns)
     page_ids = set(pages.keys())
 
     # Build edges from explicit references
@@ -92,7 +97,7 @@ def save_graph(graph: dict, output_path: Path) -> None:
         json.dump(graph, f, indent=2)
 
 
-def _load_pages(raw_dir: Path) -> dict[str, dict]:
+def _load_pages(raw_dir: Path, custom_patterns: list | None = None) -> dict[str, dict]:
     """Load all raw pages and extract frontmatter."""
     pages: dict[str, dict] = {}
     for md_file in sorted(raw_dir.rglob("*.md")):
@@ -101,7 +106,7 @@ def _load_pages(raw_dir: Path) -> dict[str, dict]:
         slug = meta.get("slug", md_file.stem)
 
         # Extract additional refs from body
-        body_refs = extract_refs_from_body(body)
+        body_refs = extract_refs_from_body(body, custom_patterns)
         fm_refs = meta.get("references", [])
         if isinstance(fm_refs, str):
             fm_refs = [r.strip() for r in fm_refs.strip("[]").split(",") if r.strip()]

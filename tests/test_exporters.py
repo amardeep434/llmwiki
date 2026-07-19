@@ -18,7 +18,7 @@ class TestExporters:
         pages = self._make_pages()
         output = tmp_path / "llms.txt"
         export_llms_txt(pages, output, "Test Project")
-        content = output.read_text()
+        content = output.read_text(encoding="utf-8")
         assert "Test Project" in content
         assert "Main" in content
 
@@ -26,7 +26,7 @@ class TestExporters:
         pages = self._make_pages()
         output = tmp_path / "graph.jsonld"
         export_jsonld(pages, output)
-        data = json.loads(output.read_text())
+        data = json.loads(output.read_text(encoding="utf-8"))
         assert "@context" in data
         assert "@graph" in data
 
@@ -34,7 +34,7 @@ class TestExporters:
         pages = self._make_pages()
         output = tmp_path / "sitemap.xml"
         export_sitemap(pages, output, "http://localhost:8765")
-        content = output.read_text()
+        content = output.read_text(encoding="utf-8")
         assert "<urlset" in content
 
     def test_export_all(self, tmp_path):

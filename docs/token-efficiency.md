@@ -1,81 +1,79 @@
 # Token Efficiency
 
-## Why Token Efficiency Matters
+## The honest version
 
-AI agents like Copilot, Claude, and Cursor consume tokens when reading source files to answer questions. A typical codebase query might require reading 10-20 files (50,000-200,000 tokens), but the answer often comes from just a few key sections.
+Modern coding agents (Claude Code, Copilot, Cursor) do not read whole
+codebases — they grep for terms and read a handful of matching files.
+That baseline is already efficient for source code. Any tool claiming
+"90%+ savings on every query" is comparing against a strawman.
 
-LLMWiki pre-processes your codebase into focused summaries, cross-references, and searchable indexes. When agents query the wiki instead of reading raw files, they get the same information with 90-98% fewer tokens.
+Where LLMWiki genuinely saves tokens:
 
-**Impact:**
-- **Cost**: At $5/million tokens (GPT-4), a team making 100 queries/day saves ~$15-50/day
-- **Speed**: Smaller context = faster responses
-- **Accuracy**: Focused summaries reduce noise and hallucination risk
-- **Context window**: Fits within smaller context windows (important for local models)
+1. **Un-greppable sources.** Agents cannot grep PDFs at all, and vendor
+   XML/config is noisy to search. LLMWiki turns both into FTS5-indexed
+   pages — the difference between "impossible/expensive" and "one search".
+2. **Navigation queries.** "Which file declares `refreshToken`?",
+   "what references this class?" — `llmwiki search "method:refreshToken"`
+   and the cross-reference graph answer these without opening any file.
+3. **Repeated orientation.** Architecture/overview questions answered
+   from page summaries instead of re-reading the same 5 files each session.
 
-## How It Works
+Where it does NOT save tokens: a specific code question about a file the
+agent would grep straight to. The agent should read the file; the wiki's
+job there is only to point at the right one. The generated agent
+instructions and staleness warnings are written accordingly.
 
-1. `llmwiki ingest` extracts structure from source files (classes, methods, imports, docs)
-2. `llmwiki build` generates searchable summaries with cross-references
-3. Agents query the wiki via MCP tools, CLI, or search index
-4. Only raw files are read when the wiki doesn't have the answer
-
-## Measuring Token Savings
-
-### Benchmark Command
+## Measuring — `llmwiki benchmark`
 
 ```bash
 llmwiki benchmark "how does authentication work"
 ```
 
-This compares:
-- **Without wiki**: Tokens in all source files matching the query keywords
-- **With wiki**: Tokens in wiki search results for the same query
+The benchmark compares:
 
-### Before/After Demo
+- **Baseline**: a simulated grep-and-read agent — files ranked by
+  distinct query-term hits, top 5 matches read in full. This mirrors how
+  real agents behave; it deliberately does *not* count every
+  keyword-matching file in the tree.
+- **Wiki flow**: `llmwiki search --agent` output plus one
+  `llmwiki get` of the top page (embedded source stripped).
 
-1. Disable wiki-first mode:
-   ```bash
-   llmwiki agent --disable
-   ```
-2. Ask your AI agent a question — note the token usage
-3. Enable wiki-first mode:
-   ```bash
-   llmwiki agent --enable
-   llmwiki build  # regenerate agent instructions
-   ```
-4. Ask the same question — note the reduced token usage
-5. The difference is your real savings
+The methodology is printed with every report, and the report will state
+plainly when the wiki flow costs *more* tokens than reading the files —
+that's a valid outcome on code-centric queries. Token counts are `len/4`
+estimates, not billing math.
 
-### Dashboard Stats
+## Staleness: the hidden token cost
 
-The wiki dashboard shows live token efficiency numbers:
-- **Raw tokens**: Total tokens in your source files
-- **Wiki tokens**: Total tokens in wiki summaries
-- **Compression**: Percentage reduction
+A stale index is worse than no index — an agent acting on outdated
+context burns more tokens recovering than it ever saved. LLMWiki
+therefore:
 
-## Setting Up Agent Integration
+- records mtime/size/hash of every ingested file;
+- prepends a `⚠ index is STALE` warning to every `search`/`get`/MCP
+  response when the source tree has drifted, telling the agent to prefer
+  raw files or re-run `llmwiki all`;
+- provides `llmwiki status` (exit code 1 when stale) for hooks/CI.
+
+After large edit sessions, re-run `llmwiki all` (incremental — only
+changed files are re-processed).
+
+## Keeping the instruction overhead small
+
+Token-saving tooling that injects a 50-line block into every
+conversation's context is self-defeating. `llmwiki setup-agent --cli`
+adds a ~15-line marked section to CLAUDE.md / AGENTS.md /
+copilot-instructions.md, and `llmwiki build` only refreshes sections
+that already exist — it never creates or appends to your instruction
+files on its own.
+
+## Setting up agent integration
 
 ```bash
-# Install MCP configs for your IDE
-llmwiki setup-agent --all
-
-# Or choose specific IDEs
-llmwiki setup-agent --vscode
-llmwiki setup-agent --cursor
-llmwiki setup-agent --jetbrains
-
-# Enable wiki-first mode
-llmwiki agent --enable
+llmwiki setup-agent --cli    # compact CLI instructions (works everywhere)
+llmwiki setup-agent --mcp    # MCP configs, where your IDE allows MCP
+llmwiki agent --enable       # opt into wiki-first phrasing in instructions
 ```
 
-See [AI Integration](ai-integration.md) for full details on generated files and formats.
-
-## ROI Calculator
-
-| Metric | Without Wiki | With Wiki |
-|--------|-------------|-----------|
-| Tokens per query | ~80,000 | ~2,000 |
-| Cost per query (GPT-4) | ~$0.40 | ~$0.01 |
-| Queries per day (team) | 100 | 100 |
-| Daily cost | ~$40 | ~$1 |
-| Monthly savings | | ~$1,170 |
+See [AI Integration](ai-integration.md) for full details on generated
+files and formats.

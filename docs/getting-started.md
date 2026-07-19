@@ -244,7 +244,7 @@ llmwiki agent --enable
 llmwiki build
 ```
 
-Your IDE's AI assistant (Copilot, Cursor, Claude) will now query the wiki before reading raw files, saving 90%+ tokens.
+Your IDE's AI assistant (Copilot, Cursor, Claude) will now query the wiki before reading raw files. Run `llmwiki benchmark "<query>"` to measure the actual savings on your repo.
 
 See [Token Efficiency](token-efficiency.md) for measuring the savings.
 

@@ -149,6 +149,9 @@ The `--theme` flag overrides the config value for that build.
 | `enabled` | boolean | `true` | Enable cross-reference extraction and graph building |
 | `importance_iterations` | integer | `20` | Documented setting, but PageRank iterations are currently hardcoded to 20 |
 | `cluster_min_size` | integer | `3` | Documented setting, but cluster detection currently uses a hardcoded minimum size of 3 |
+| `custom_patterns` | string[] | `[]` | Extra regex patterns for domain-specific references (product APIs, connector names). First capture group (or whole match) becomes a reference. Built-in extraction is deliberately generic — put domain vocabulary here, e.g. `"\\b(sailpoint\\.\\w+\\.\\w+)\\b"` |
+
+Per-source option: set `"extract_beanshell": true` on an XML source entry to extract inline BeanShell scripts into their own pages (SailPoint IIQ idiom; off by default so generic XML stays clean).
 
 ### `agent_assist`
 
@@ -156,7 +159,7 @@ The `--theme` flag overrides the config value for that build.
 |------|---------|-------------|
 | boolean | `false` | Enable wiki-first agent behavior for IDE integration |
 
-When set to `true`, the MCP server and IDE integrations prioritize wiki search over raw file access, reducing token usage by 90%+. Enable with `llmwiki agent --enable`.
+When set to `true`, generated agent instructions ask agents to search the wiki before reading raw files. Enable with `llmwiki agent --enable`. Run `llmwiki benchmark` to measure actual savings.
 
 ### `exclude_global`
 

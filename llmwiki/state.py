@@ -39,8 +39,19 @@ class BuildState:
             json.dump(data, f, indent=2)
             f.write("\n")
 
-    def record_file(self, source_path: str, content_hash: str, raw_path: str) -> None:
-        self.files[source_path] = {"content_hash": content_hash, "raw_path": raw_path, "status": "current"}
+    def record_file(self, source_path: str, content_hash: str, raw_path: str,
+                    mtime: float | None = None, size: int | None = None) -> None:
+        entry = {"content_hash": content_hash, "raw_path": raw_path, "status": "current"}
+        if mtime is None or size is None:
+            try:
+                st = Path(source_path).stat()
+                mtime, size = st.st_mtime, st.st_size
+            except OSError:
+                mtime, size = None, None
+        if mtime is not None:
+            entry["mtime"] = mtime
+            entry["size"] = size
+        self.files[source_path] = entry
 
     def classify(self, source_path: str, content_hash: str) -> str:
         if source_path not in self.files:

@@ -167,7 +167,7 @@ class TestE2EPipeline:
 
         result = subprocess.run(
             [sys.executable, "-m", "llmwiki", "all", "--config", str(cfg_path)],
-            capture_output=True, text=True, cwd=str(work_dir),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(work_dir),
         )
         # Should complete without error
         assert result.returncode == 0, (

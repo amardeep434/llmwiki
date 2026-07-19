@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — credibility & CLI-first overhaul
+
+- **Honest benchmark**: `llmwiki benchmark` now compares against a realistic
+  grep-and-read agent baseline (top-5 term-ranked files) instead of summing
+  every keyword-matching file in the tree; methodology is printed with every
+  report, and negative savings are reported plainly.
+- **Staleness detection**: new `llmwiki status` command plus automatic
+  `⚠ index is STALE` warnings prepended to `search`/`get`/MCP responses when
+  source files changed since the last ingest (stat-based check with hash
+  confirmation; state now records mtime/size).
+- **FTS5 query sanitization**: natural-language queries with colons, hyphens,
+  or question marks no longer raise silent `OperationalError` → "no results";
+  `method:<name>` queries route to method search (the documented agent
+  workflow previously errored); substring fallback on residual FTS errors.
+- **MCP server unified on FTS5**: MCP tools now query `llmwiki.db` (BM25)
+  instead of naive substring matching over `search-index.json`, and
+  `llmwiki_get_page` returns full source-stripped page content instead of a
+  1200-char truncation (JSON index remains a fallback when no DB exists).
+- **`--context` output fixed**: no longer embeds the full source file per
+  result — returns the structured summary layer only.
+- **Generic by default**: SailPoint/connector regexes removed from cross-ref
+  extraction (now config-driven via `cross_references.custom_patterns`);
+  BeanShell-in-XML extraction is opt-in per source.
+- **Agent instruction files**: first write now includes idempotency markers
+  (fixes duplicate sections on rebuild); generated guide compacted to ~15
+  lines, CLI-first with `python -m llmwiki` fallback and file-based last
+  resort; `llmwiki build` only refreshes existing marked sections — creating
+  files is opt-in via `llmwiki setup-agent`.
+- **Read-only SQL enforced**: `llmwiki query` opens the DB with
+  `mode=ro` — the SELECT prefix check is no longer the security boundary.
+- **Build performance**: search DB population batched into one
+  connection/transaction instead of one per page.
+- **CI**: GitHub Actions test matrix (Ubuntu/Windows/macOS × Python 3.9/3.13).
+- **Docs**: repositioned around un-greppable knowledge (PDFs, vendor XML,
+  architecture); removed unconditional "90%+ savings" claims.
+
 ### Added
 
 - **AI Agent Integration**:

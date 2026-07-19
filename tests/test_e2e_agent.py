@@ -107,7 +107,7 @@ class TestBenchmark:
         result = run_benchmark(
             "login",
             source_dirs=[wiki_project["source"]],
-            wiki_dir=wiki_project["root"] / "site",
+            site_dir=wiki_project["root"] / "site",
         )
         assert result["raw_tokens"] > 0
         assert result["wiki_tokens"] >= 0
@@ -119,11 +119,11 @@ class TestBenchmark:
         result = run_benchmark(
             "login",
             source_dirs=[wiki_project["source"]],
-            wiki_dir=wiki_project["root"] / "site",
+            site_dir=wiki_project["root"] / "site",
         )
         report = format_benchmark_report(result)
         assert "login" in report
-        assert "%" in report
+        assert "Tokens" in report and "Methodology" in report
 
 
 class TestMCPServer:
@@ -169,13 +169,13 @@ class TestSetupAgent:
     def test_copilot_extension_content(self, wiki_project):
         project_root = wiki_project["root"].parent
         ext_path = generate_copilot_extension(project_root, ".llmwiki")
-        content = ext_path.read_text()
+        content = ext_path.read_text(encoding="utf-8")
         assert "llmwiki_search" in content
         assert "llmwiki search" in content
 
 
 class TestDashboard:
     def test_dashboard_has_token_stats(self, wiki_project):
-        index_html = (wiki_project["root"] / "site" / "index.html").read_text()
+        index_html = (wiki_project["root"] / "site" / "index.html").read_text(encoding="utf-8")
         # Dashboard should contain token efficiency stats if source was accessible
         assert "wiki tokens" in index_html.lower() or "stats-strip" in index_html
