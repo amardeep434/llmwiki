@@ -7,7 +7,10 @@ from pathlib import Path
 from llmwiki.adapters import register
 from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
 
-_CONFIG_EXTS = {".json", ".yaml", ".yml", ".toml", ".properties", ".ini", ".env", ".cfg"}
+# .env is intentionally excluded: it routinely holds secrets. The config
+# floor in config.py also excludes it, but defence in depth keeps the adapter
+# from ever handling one even if a caller bypasses config loading.
+_CONFIG_EXTS = {".json", ".yaml", ".yml", ".toml", ".properties", ".ini", ".cfg"}
 
 
 @register

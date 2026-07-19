@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from llmwiki.redact import detect_secrets
+
 
 def lint_wiki(raw_dir: Path, graph: dict) -> list[dict]:
     """Run lint checks and return list of issues."""
@@ -36,6 +38,23 @@ def lint_wiki(raw_dir: Path, graph: dict) -> list[dict]:
                         "page": md_file.stem,
                         "message": f"Broken wikilink: [[{link}]]",
                     })
+
+    # Check for suspected secrets in raw page bodies. Redaction scrubs new
+    # ingests, but this catches wikis built before redaction existed — the
+    # page files themselves may still carry a secret.
+    if raw_dir.exists():
+        for md_file in raw_dir.rglob("*.md"):
+            content = md_file.read_text(encoding="utf-8", errors="replace")
+            for finding in detect_secrets(content):
+                issues.append({
+                    "rule": "secret-suspect",
+                    "severity": "error",
+                    "page": md_file.stem,
+                    "message": (
+                        f"Suspected secret ({finding['kind']}): "
+                        f"{finding['count']} occurrence(s) — rebuild to redact"
+                    ),
+                })
 
     # Check for missing titles
     for node in graph.get("nodes", []):

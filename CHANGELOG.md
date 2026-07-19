@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — security hardening
+
+- **Sensitive-file exclusion floor**: secret-bearing files (`.env`, `*.pem`,
+  `*.key`, `id_rsa*`, `*credentials*`, `*secret*`, `.ssh`/`.aws`/`.gnupg`, and
+  more) are now refused at config-load time regardless of a config's own
+  `exclude` lists, protecting legacy/frozen configs without migration. Opt out
+  with `"security": {"allow_sensitive_files": true}`. `.env` also removed from
+  the config adapter's handled extensions (defence in depth).
+- **Ingest-time redaction**: new `llmwiki/redact.py` scrubs high-confidence
+  secrets (AWS access keys, Google API keys, PEM private-key blocks, JWTs, URL
+  credentials, and gated `password=`/`token=`/`secret=` assignments with
+  placeholder filtering) from every page body before it reaches `raw/`, the DB,
+  the search index, or exports. Ingest reports `⚠ redacted N suspected
+  credentials across M pages`. Extra patterns via `security.redact_patterns`;
+  disable via `security.redact: false`.
+- **Lint `secret-suspect` rule**: flags secrets still present in pages built
+  before redaction existed (severity `error`, message names the kind).
+- **Export gate**: `llms-full.txt` is re-scrubbed at export time with a
+  prominent stderr warning — suspected secrets never ship in exports.
+
 ### Changed — credibility & CLI-first overhaul
 
 - **Honest benchmark**: `llmwiki benchmark` now compares against a realistic

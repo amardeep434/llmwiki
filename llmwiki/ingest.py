@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import _ensure_all_loaded, _REGISTRY
+from llmwiki.redact import compile_redact_patterns, redact_text
 from llmwiki.state import BuildState
 
 logger = logging.getLogger(__name__)
@@ -21,15 +22,28 @@ def ingest_source(
     state_path: Path,
     config: dict,
     adapter_name: str | None = None,
+    security: dict | None = None,
 ) -> dict:
     """Ingest files from a single source directory into raw/.
 
-    Returns summary dict with added/modified/unchanged/skipped/errors counts.
+    Returns summary dict with added/modified/unchanged/skipped/errors counts,
+    plus ``redacted`` (secrets scrubbed) and ``redacted_pages`` (pages touched).
+
+    ``security`` carries the top-level ``security`` config block (redaction is
+    per-project, not per-source); it is threaded in separately because
+    ``config`` here is the per-source dict.
     """
     _ensure_all_loaded()
     state = BuildState(state_path)
 
-    counts = {"added": 0, "modified": 0, "unchanged": 0, "skipped": 0, "errors": 0}
+    security = security or {}
+    redact_enabled = security.get("redact", True)
+    extra_patterns = compile_redact_patterns(security.get("redact_patterns"))
+
+    counts = {
+        "added": 0, "modified": 0, "unchanged": 0, "skipped": 0, "errors": 0,
+        "redacted": 0, "redacted_pages": 0,
+    }
     exclude = config.get("exclude", [])
 
     for name, adapter_cls in _REGISTRY.items():
@@ -63,6 +77,18 @@ def ingest_source(
                 logger.warning("Failed to process %s: %s", fpath, e)
                 counts["errors"] += 1
                 continue
+
+            # Redact secrets from each page body BEFORE it is written to raw/,
+            # so nothing sensitive ever lands on disk or flows into the DB,
+            # search index, or exports downstream.
+            if redact_enabled:
+                for page in pages:
+                    clean, findings = redact_text(page.body, extra_patterns=extra_patterns)
+                    if findings:
+                        page.body = clean
+                        page.compute_hash()
+                        counts["redacted"] += sum(f["count"] for f in findings)
+                        counts["redacted_pages"] += 1
 
             # Write to raw/
             out_paths = []
@@ -150,17 +176,23 @@ def ingest_all(
     state_path: Path,
 ) -> dict:
     """Run full ingestion from all configured sources."""
-    totals = {"total_added": 0, "total_modified": 0, "total_unchanged": 0, "total_errors": 0}
+    totals = {
+        "total_added": 0, "total_modified": 0, "total_unchanged": 0,
+        "total_errors": 0, "total_redacted": 0, "total_redacted_pages": 0,
+    }
+    security = config.get("security", {})
 
     # Ingest codebase sources
     for source in config.get("sources", []):
         src_path = Path(source["path"])
         if src_path.exists():
-            result = ingest_source(src_path, raw_dir, state_path, source)
+            result = ingest_source(src_path, raw_dir, state_path, source, security=security)
             totals["total_added"] += result["added"]
             totals["total_modified"] += result["modified"]
             totals["total_unchanged"] += result["unchanged"]
             totals["total_errors"] += result.get("errors", 0)
+            totals["total_redacted"] += result.get("redacted", 0)
+            totals["total_redacted_pages"] += result.get("redacted_pages", 0)
 
     # Ingest PDFs
     pdf_sources = config.get("pdf_sources", [])

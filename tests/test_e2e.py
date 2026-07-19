@@ -173,3 +173,59 @@ class TestE2EPipeline:
         assert result.returncode == 0, (
             f"CLI exited {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
+
+    def test_secret_never_reaches_outputs(self, tmp_path):
+        """A hardcoded AWS key must not survive into any build/export artifact."""
+        secret = "AKIAIOSFODNN7EXAMPLE"
+        project = tmp_path / "project"
+        (project / "src").mkdir(parents=True)
+        (project / "src" / "client.py").write_text(
+            "# API client\n"
+            f'AWS_ACCESS_KEY_ID = "{secret}"\n'
+            "def connect():\n    return AWS_ACCESS_KEY_ID\n"
+        )
+
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        config = create_default_config("SecretProject", str(project))
+        cfg_path = work_dir / "llmwiki.json"
+        save_config(config, cfg_path)
+
+        raw_dir = work_dir / "raw"
+        raw_dir.mkdir()
+        state_path = work_dir / ".llmwiki-state.json"
+        ingest_result = ingest_all(config, raw_dir, state_path)
+        assert ingest_result["total_redacted"] >= 1
+
+        # Build site + search DB + exports (mirrors test_full_pipeline).
+        (work_dir / "wiki").mkdir()
+        (work_dir / "site").mkdir(exist_ok=True)
+        build_site(work_dir, config, full=True)
+
+        db_path = work_dir / "site" / "llmwiki.db"
+        create_search_db(db_path)
+        graph = build_graph(raw_dir)
+        for node in graph["nodes"]:
+            insert_page(db_path, {
+                "id": node["id"],
+                "title": node["title"],
+                "category": node["type"],
+                "body_plain": _load_pages(raw_dir).get(node["id"], {}).get("body", ""),
+                "tags": "[]",
+                "importance_score": node["importance"],
+            })
+
+        pages = _load_pages(raw_dir)
+        export_all(pages, work_dir / "site", "SecretProject")
+
+        # The raw secret string must appear in NONE of the outputs.
+        checked = []
+        for md in raw_dir.rglob("*.md"):
+            checked.append(md)
+            assert secret not in md.read_text(encoding="utf-8")
+        for artifact in ["llms-full.txt", "search-index.json"]:
+            fpath = work_dir / "site" / artifact
+            if fpath.exists():
+                assert secret not in fpath.read_text(encoding="utf-8"), f"leak in {artifact}"
+        assert secret.encode() not in db_path.read_bytes(), "leak in llmwiki.db"
+        assert checked, "expected at least one raw page"

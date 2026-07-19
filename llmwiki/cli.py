@@ -341,6 +341,10 @@ def _cmd_ingest(args) -> int:
     print(f"  Unchanged: {result['total_unchanged']}")
     if result.get("total_errors"):
         print(f"  Errors: {result['total_errors']}")
+    redacted = result.get("total_redacted", 0)
+    if redacted:
+        pages = result.get("total_redacted_pages", 0)
+        print(f"  ⚠ redacted {redacted} suspected credentials across {pages} pages")
     return 0
 
 

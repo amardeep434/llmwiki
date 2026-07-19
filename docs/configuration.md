@@ -169,6 +169,41 @@ When set to `true`, generated agent instructions ask agents to search the wiki b
 
 Global exclusion patterns applied to all sources in addition to per-source excludes.
 
+### `security`
+
+Controls the two secret-protection layers. Both are on by default; you rarely
+need to configure this block.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allow_sensitive_files` | boolean | `false` | Opt out of the sensitive-file exclusion floor. When `false` (default), files that routinely hold secrets are refused at load time regardless of your `exclude` lists. |
+| `redact` | boolean | `true` | Scrub high-confidence secrets (AWS/Google keys, private keys, JWTs, URL credentials, `password=`/`token=` assignments) from every page body at ingest, before anything is written to `raw/`, the DB, the search index, or exports. |
+| `redact_patterns` | string[] | `[]` | Extra redaction regexes (redacted as kind `custom`). Invalid patterns are skipped with a logged warning. |
+
+**Sensitive-file floor.** These patterns are always merged into every source's
+`exclude` and into `exclude_global` at load time (so even frozen/legacy configs
+are protected without migration), unless `allow_sensitive_files` is `true`:
+
+```
+.env, .env.*, *.pem, *.key, *.p12, *.pfx, *.jks, *.keystore,
+id_rsa*, id_ed25519*, id_dsa*, .netrc, .npmrc, .pypirc,
+*credentials*, *secret*, *.tfstate, .ssh, .aws, .gnupg
+```
+
+```json
+{
+  "security": {
+    "allow_sensitive_files": false,
+    "redact": true,
+    "redact_patterns": ["INTERNAL-[A-Z0-9]{12}"]
+  }
+}
+```
+
+The `llmwiki lint` `secret-suspect` rule also flags any secret still present in
+pages built before redaction existed, and `llms-full.txt` is re-scrubbed at
+export time as a final safety net.
+
 ---
 
 ## Example Configurations
