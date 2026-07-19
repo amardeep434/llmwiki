@@ -29,16 +29,27 @@ SENSITIVE_EXCLUDE = [
     ".ssh", ".aws", ".gnupg",
 ]
 
+# Agent-instruction files llmwiki itself (re)writes via setup-agent/build.
+# Ingesting them creates a permanent self-staleness loop: build refreshes the
+# marked section → mtime/content change → every query warns STALE → re-ingest
+# → build refreshes again (found in Phase V end-user run). Agents read these
+# files directly anyway, so indexing them adds no knowledge. Applied at load
+# time alongside the sensitive floor so existing configs are covered.
+SELF_EXCLUDE = [
+    "CLAUDE.md", "AGENTS.md", "GEMINI.md", "copilot-instructions.md",
+    "llmwiki.agent.md",
+]
 
-def _merge_sensitive_floor(existing: list) -> list:
-    """Return existing excludes plus any missing SENSITIVE_EXCLUDE entries.
+
+def _merge_floor(existing: list, floor: list) -> list:
+    """Return existing excludes plus any missing floor entries.
 
     New objects are returned rather than mutating the input, preserving the
     caller's list and any user-defined order (floor entries appended at end).
     """
     seen = set(existing)
     merged = list(existing)
-    for pattern in SENSITIVE_EXCLUDE:
+    for pattern in floor:
         if pattern not in seen:
             merged.append(pattern)
     return merged
@@ -53,12 +64,14 @@ def _apply_sensitive_floor(config: dict) -> dict:
     rare project that genuinely needs to document such files.
     """
     if config.get("security", {}).get("allow_sensitive_files"):
-        return config
+        floor = SELF_EXCLUDE
+    else:
+        floor = SENSITIVE_EXCLUDE + SELF_EXCLUDE
 
     updated = dict(config)
-    updated["exclude_global"] = _merge_sensitive_floor(config.get("exclude_global", []) or [])
+    updated["exclude_global"] = _merge_floor(config.get("exclude_global", []) or [], floor)
     updated["sources"] = [
-        {**source, "exclude": _merge_sensitive_floor(source.get("exclude", []) or [])}
+        {**source, "exclude": _merge_floor(source.get("exclude", []) or [], floor)}
         for source in config.get("sources", [])
     ]
     return updated

@@ -131,3 +131,49 @@ class TestAggregationAndCustom:
         clean, findings = redact_text("just some ordinary documentation text")
         assert findings == []
         assert clean == "just some ordinary documentation text"
+
+
+class TestDogfoodRegressions:
+    """Bugs found by running llmwiki on its own repo (Phase V)."""
+
+    def test_redaction_is_idempotent(self):
+        """The «REDACTED:...» marker must never re-trigger detection."""
+        from llmwiki.redact import redact_text
+        text = 'password = "hunter2secret9value"'
+        once, f1 = redact_text(text)
+        assert f1
+        twice, f2 = redact_text(once)
+        assert twice == once
+        assert f2 == []
+
+    def test_unquoted_function_call_not_redacted(self):
+        from llmwiki.redact import redact_text
+        clean, findings = redact_text("token = fetch_token(user)")
+        assert clean == "token = fetch_token(user)"
+        assert findings == []
+
+    def test_unquoted_dotted_path_not_redacted(self):
+        from llmwiki.redact import redact_text
+        clean, findings = redact_text("api_key = settings.credentials.key")
+        assert clean == "api_key = settings.credentials.key"
+        assert findings == []
+
+    def test_regex_assignment_not_redacted(self):
+        """The exact case from dogfooding: a pattern constant named *_ACCESS_KEY."""
+        from llmwiki.redact import redact_text
+        text = '_AWS_ACCESS_KEY = re.compile(r"AKIA[0-9A-Z]{16}")'
+        clean, findings = redact_text(text)
+        # generic-credential must not fire on the re.compile expression
+        assert "re.compile" in clean
+
+    def test_quoted_literal_still_redacted(self):
+        from llmwiki.redact import redact_text
+        clean, findings = redact_text('password = "hunter2secret9value"')
+        assert "hunter2secret9value" not in clean
+        assert any(f["kind"] == "generic-credential" for f in findings)
+
+    def test_unquoted_env_style_still_redacted(self):
+        """properties/env-style bare secrets must still be caught."""
+        from llmwiki.redact import redact_text
+        clean, findings = redact_text("db.password=changeme123secret")
+        assert "changeme123secret" not in clean

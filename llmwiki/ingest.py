@@ -132,14 +132,25 @@ def ingest_pdfs(
     pdf_paths: list[dict],
     raw_dir: Path,
     state_path: Path,
+    security: dict | None = None,
 ) -> dict:
-    """Ingest PDF files from configured paths."""
+    """Ingest PDF files from configured paths.
+
+    PDFs get the same redaction pass as code sources: vendor guides
+    routinely show credential examples, and unredacted PDF pages were
+    failing the secret-suspect lint gate (Phase V finding on a 164-PDF
+    connector-guide corpus).
+    """
     _ensure_all_loaded()
     from llmwiki.adapters.pdf_adapter import PDFAdapter
 
     state = BuildState(state_path)
     adapter = PDFAdapter()
-    counts = {"added": 0, "modified": 0, "unchanged": 0, "errors": 0}
+    security = security or {}
+    redact_enabled = security.get("redact", True)
+    extra_patterns = compile_redact_patterns(security.get("redact_patterns"))
+    counts = {"added": 0, "modified": 0, "unchanged": 0, "errors": 0,
+              "redacted": 0, "redacted_pages": 0}
 
     for pdf_source in pdf_paths:
         src_path = Path(pdf_source["path"])
@@ -172,6 +183,15 @@ def ingest_pdfs(
                 counts["errors"] += 1
                 continue
 
+            if redact_enabled:
+                for page in pages:
+                    clean, findings = redact_text(page.body, extra_patterns=extra_patterns)
+                    if findings:
+                        page.body = clean
+                        page.compute_hash()
+                        counts["redacted"] += sum(f["count"] for f in findings)
+                        counts["redacted_pages"] += 1
+
             out_paths = []
             for page in pages:
                 out_path = raw_dir / page.category / f"{page.slug.split('/')[-1]}.md"
@@ -202,6 +222,21 @@ def ingest_all(
     }
     security = config.get("security", {})
 
+    # Ingest explicitly-configured PDFs FIRST: a PDF living inside a source
+    # directory is also discovered by the generic source scan, which knows no
+    # label. Running the labeled pass first records the file with its
+    # configured label; the later source scan then classifies it "unchanged"
+    # instead of shadowing it with the default category (dogfood finding).
+    pdf_sources = config.get("pdf_sources", [])
+    if pdf_sources:
+        result = ingest_pdfs(pdf_sources, raw_dir, state_path, security=security)
+        totals["total_added"] += result["added"]
+        totals["total_modified"] += result["modified"]
+        totals["total_unchanged"] += result["unchanged"]
+        totals["total_errors"] += result.get("errors", 0)
+        totals["total_redacted"] += result.get("redacted", 0)
+        totals["total_redacted_pages"] += result.get("redacted_pages", 0)
+
     # Ingest codebase sources
     for source in config.get("sources", []):
         src_path = Path(source["path"])
@@ -213,15 +248,6 @@ def ingest_all(
             totals["total_errors"] += result.get("errors", 0)
             totals["total_redacted"] += result.get("redacted", 0)
             totals["total_redacted_pages"] += result.get("redacted_pages", 0)
-
-    # Ingest PDFs
-    pdf_sources = config.get("pdf_sources", [])
-    if pdf_sources:
-        result = ingest_pdfs(pdf_sources, raw_dir, state_path)
-        totals["total_added"] += result["added"]
-        totals["total_modified"] += result["modified"]
-        totals["total_unchanged"] += result["unchanged"]
-        totals["total_errors"] += result.get("errors", 0)
 
     # Prune sources that no longer exist. Only safe in ingest_all: this is a
     # full run that discovered every source, so a recorded file now absent is
@@ -295,8 +321,11 @@ def _generate_token_registry(raw_dir: Path) -> None:
         sources = tokens[token_name]
         body_lines.append(f"## %%{token_name}%%\n")
         body_lines.append(f"Used in {len(sources)} files:\n")
+        # Plain names, not [[wikilinks]]: these titles rarely resolve to page
+        # ids, and every miss became a broken_link lint ERROR (784 of them on
+        # a real repo), failing `llmwiki all` on a perfectly good build.
         for src in sorted(set(sources))[:10]:
-            body_lines.append(f"- [[{src}]]")
+            body_lines.append(f"- `{src}`")
         body_lines.append("")
 
     from llmwiki.adapters.base import WikiPage

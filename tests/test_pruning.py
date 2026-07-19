@@ -272,3 +272,22 @@ class TestDeletePagesNotIn:
         remaining = conn.execute("SELECT count(*) FROM pages").fetchone()[0]
         conn.close()
         assert remaining == 600
+
+
+class TestSlugCategoryDedup:
+    """Phase V finding: category segments duplicated in nested ids."""
+
+    def test_category_run_removed_from_relative_path(self):
+        from llmwiki.adapters.base import make_slug
+        from pathlib import Path
+        slug = make_slug(
+            Path("/src/config/Application/Core/App.xml"),
+            Path("/src"), "Application/Core",
+        )
+        assert slug == "application/core/config/app"
+
+    def test_no_dedup_when_category_not_in_path(self):
+        from llmwiki.adapters.base import make_slug
+        from pathlib import Path
+        slug = make_slug(Path("/src/a/utils.py"), Path("/src"), "python")
+        assert slug == "python/a/utils"
