@@ -39,10 +39,24 @@ def make_slug(path: Path, source_root: Path | None, category: str) -> str:
         segments = [*rel.parts[:-1], rel.stem]
     else:
         segments = [Path(path).stem]
-    rel_slug = "/".join(_sanitize_slug_segment(s) for s in segments if s)
-    cat_slug = "/".join(
+    rel_segments = [_sanitize_slug_segment(s) for s in segments if s]
+    cat_segments = [
         _sanitize_slug_segment(s) for s in str(category).split("/") if s
-    )
+    ]
+    # Categories are often derived from the same directory segments (e.g. the
+    # XML adapter maps config/Application/Core → category Application/Core).
+    # Without de-duplication the id doubles up as
+    # application/core/config/application/core/<file> — unreadable and painful
+    # to pass to `llmwiki get` (found in Phase V on a real SailPoint repo).
+    # Drop the first occurrence of the category run from the relative dirs.
+    rel_dirs, rel_leaf = rel_segments[:-1], rel_segments[-1:]
+    if cat_segments and len(cat_segments) <= len(rel_dirs):
+        for i in range(len(rel_dirs) - len(cat_segments) + 1):
+            if rel_dirs[i:i + len(cat_segments)] == cat_segments:
+                rel_dirs = rel_dirs[:i] + rel_dirs[i + len(cat_segments):]
+                break
+    rel_slug = "/".join(rel_dirs + rel_leaf)
+    cat_slug = "/".join(cat_segments)
     slug = f"{cat_slug}/{rel_slug}" if cat_slug else rel_slug
     return slug.strip("-/")
 

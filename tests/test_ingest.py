@@ -77,3 +77,16 @@ def test_pdf_inside_source_dir_keeps_configured_label(tmp_path, monkeypatch):
     ingest_all(config, raw, tmp_path / "state.json")
     assert (raw / "papers" / "guide.md").exists()
     assert not (raw / "docs" / "guide.md").exists()
+
+
+def test_token_registry_uses_plain_names_not_wikilinks(tmp_path):
+    """Phase V: registry [[wikilinks]] produced 784 broken-link lint errors."""
+    from llmwiki.ingest import _generate_token_registry
+    raw = tmp_path / "raw"
+    (raw / "config").mkdir(parents=True)
+    (raw / "config" / "app.md").write_text(
+        "name %%SOME_TOKEN%% here", encoding="utf-8")
+    _generate_token_registry(raw)
+    registry = (raw / "tokens" / "registry.md").read_text(encoding="utf-8")
+    assert "[[" not in registry
+    assert "`app`" in registry

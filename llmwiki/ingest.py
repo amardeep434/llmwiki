@@ -299,8 +299,11 @@ def _generate_token_registry(raw_dir: Path) -> None:
         sources = tokens[token_name]
         body_lines.append(f"## %%{token_name}%%\n")
         body_lines.append(f"Used in {len(sources)} files:\n")
+        # Plain names, not [[wikilinks]]: these titles rarely resolve to page
+        # ids, and every miss became a broken_link lint ERROR (784 of them on
+        # a real repo), failing `llmwiki all` on a perfectly good build.
         for src in sorted(set(sources))[:10]:
-            body_lines.append(f"- [[{src}]]")
+            body_lines.append(f"- `{src}`")
         body_lines.append("")
 
     from llmwiki.adapters.base import WikiPage

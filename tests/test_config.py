@@ -148,3 +148,33 @@ class TestSensitiveFloor:
         loaded = load_config(cfg_file)
         names = self._discover_names(proj, loaded["sources"][0]["exclude"])
         assert "secrets.json" in names
+
+
+class TestSelfExcludeFloor:
+    """Phase V finding: ingesting agent-instruction files that llmwiki itself
+    rewrites created a permanent self-staleness loop."""
+
+    def test_agent_files_excluded_at_load(self, tmp_path):
+        import json
+        from llmwiki.config import load_config
+        cfg_path = tmp_path / "llmwiki.json"
+        cfg_path.write_text(json.dumps({
+            "sources": [{"path": str(tmp_path), "exclude": []}],
+            "exclude_global": [],
+        }), encoding="utf-8")
+        config = load_config(cfg_path)
+        for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            assert name in config["sources"][0]["exclude"]
+            assert name in config["exclude_global"]
+
+    def test_self_exclude_applies_even_with_sensitive_opt_out(self, tmp_path):
+        import json
+        from llmwiki.config import load_config
+        cfg_path = tmp_path / "llmwiki.json"
+        cfg_path.write_text(json.dumps({
+            "sources": [{"path": str(tmp_path), "exclude": []}],
+            "security": {"allow_sensitive_files": True},
+        }), encoding="utf-8")
+        config = load_config(cfg_path)
+        assert "CLAUDE.md" in config["sources"][0]["exclude"]
+        assert ".env" not in config["sources"][0]["exclude"]
