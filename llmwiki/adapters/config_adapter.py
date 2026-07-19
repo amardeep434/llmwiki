@@ -5,9 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence, make_slug
 
-_CONFIG_EXTS = {".json", ".yaml", ".yml", ".toml", ".properties", ".ini", ".env", ".cfg"}
+# .env is intentionally excluded: it routinely holds secrets. The config
+# floor in config.py also excludes it, but defence in depth keeps the adapter
+# from ever handling one even if a caller bypasses config loading.
+_CONFIG_EXTS = {".json", ".yaml", ".yml", ".toml", ".properties", ".ini", ".cfg"}
 
 
 @register
@@ -45,7 +48,7 @@ class ConfigAdapter(BaseAdapter):
         sections.append(f"## Contents\n\n{fence}{lang}\n{content}\n{fence}")
 
         page = WikiPage(
-            slug=f"config/{path.stem}".lower(),
+            slug=make_slug(path, config.get("_source_root"), "config"),
             title=path.name,
             category="config",
             source_path=str(path),

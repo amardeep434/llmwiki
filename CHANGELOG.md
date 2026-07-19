@@ -9,6 +9,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — security hardening
+
+- **Sensitive-file exclusion floor**: secret-bearing files (`.env`, `*.pem`,
+  `*.key`, `id_rsa*`, `*credentials*`, `*secret*`, `.ssh`/`.aws`/`.gnupg`, and
+  more) are now refused at config-load time regardless of a config's own
+  `exclude` lists, protecting legacy/frozen configs without migration. Opt out
+  with `"security": {"allow_sensitive_files": true}`. `.env` also removed from
+  the config adapter's handled extensions (defence in depth).
+- **Ingest-time redaction**: new `llmwiki/redact.py` scrubs high-confidence
+  secrets (AWS access keys, Google API keys, PEM private-key blocks, JWTs, URL
+  credentials, and gated `password=`/`token=`/`secret=` assignments with
+  placeholder filtering) from every page body before it reaches `raw/`, the DB,
+  the search index, or exports. Ingest reports `⚠ redacted N suspected
+  credentials across M pages`. Extra patterns via `security.redact_patterns`;
+  disable via `security.redact: false`.
+- **Lint `secret-suspect` rule**: flags secrets still present in pages built
+  before redaction existed (severity `error`, message names the kind).
+- **Export gate**: `llms-full.txt` is re-scrubbed at export time with a
+  prominent stderr warning — suspected secrets never ship in exports.
+
+### Fixed — data correctness
+
+- **Deleted/renamed sources are pruned end-to-end**: a full `llmwiki ingest`
+  (or `all`) now detects source files that disappeared since the last run and
+  removes their `raw/` pages and state entries; `llmwiki build` drops matching
+  rows from `llmwiki.db` (and its FTS index) so a deleted or renamed file no
+  longer lingers forever in `raw/`, search results, and exports. Ingest reports
+  `Removed: N`. Pruning only runs on full ingests — a filtered `--adapter` run
+  never prunes, since it sees only a subset of files. Legacy databases with
+  pre-existing ghost rows self-heal on the next build.
+- **Silent slug collisions fixed**: two files sharing a stem whose pages fell
+  in the same category (e.g. `a/utils.py` and `b/utils.py`) previously
+  overwrote each other, silently dropping one page. Page ids are now derived
+  from the path *relative to the source root* (shared `adapters.base.make_slug`
+  helper, used by the source/xml/markdown/config/generic adapters), guaranteeing
+  uniqueness within a source. As a second safety net, ingest disambiguates any
+  raw output filename that would collide within a run (appends a short content
+  hash and logs a warning).
+- **Atomic search-DB rebuild**: `llmwiki.db` is now built in a temp file and
+  swapped in via `os.replace`, so agents querying mid-build never hit a locked
+  or half-populated database. On Windows a locked target is retried, then falls
+  back to the previous in-place write with a warning.
+
+### Changed (breaking)
+
+- **Page ids for nested files changed**: with path-aware slugs, files below the
+  source root now carry directory context in their id (`svc/src/billing/utils`
+  instead of `svc/utils`). Ids for files directly at the source root are
+  unchanged. After upgrading, run `llmwiki clean && llmwiki all` once to
+  regenerate under the new ids (build-time DB pruning clears the old-id rows
+  automatically).
+
 ### Changed — credibility & CLI-first overhaul
 
 - **Honest benchmark**: `llmwiki benchmark` now compares against a realistic

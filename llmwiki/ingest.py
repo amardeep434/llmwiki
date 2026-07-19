@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import _ensure_all_loaded, _REGISTRY
+from llmwiki.redact import compile_redact_patterns, redact_text
 from llmwiki.state import BuildState
 
 logger = logging.getLogger(__name__)
@@ -21,16 +22,36 @@ def ingest_source(
     state_path: Path,
     config: dict,
     adapter_name: str | None = None,
+    security: dict | None = None,
 ) -> dict:
     """Ingest files from a single source directory into raw/.
 
-    Returns summary dict with added/modified/unchanged/skipped/errors counts.
+    Returns summary dict with added/modified/unchanged/skipped/errors counts,
+    plus ``redacted`` (secrets scrubbed) and ``redacted_pages`` (pages touched).
+
+    ``security`` carries the top-level ``security`` config block (redaction is
+    per-project, not per-source); it is threaded in separately because
+    ``config`` here is the per-source dict.
     """
     _ensure_all_loaded()
     state = BuildState(state_path)
 
-    counts = {"added": 0, "modified": 0, "unchanged": 0, "skipped": 0, "errors": 0}
+    security = security or {}
+    redact_enabled = security.get("redact", True)
+    extra_patterns = compile_redact_patterns(security.get("redact_patterns"))
+
+    counts = {
+        "added": 0, "modified": 0, "unchanged": 0, "skipped": 0, "errors": 0,
+        "redacted": 0, "redacted_pages": 0,
+    }
     exclude = config.get("exclude", [])
+
+    # Raw output paths written during THIS run. make_slug already guarantees
+    # unique page ids, but the raw filename is only the slug's last segment
+    # under its category dir, so two distinct ids can still target one file
+    # (e.g. src/a/utils.py and src/b/utils.py → raw/<cat>/utils.md). If that
+    # happens, disambiguate the second file rather than silently overwrite.
+    written_paths: set[str] = set()
 
     for name, adapter_cls in _REGISTRY.items():
         if adapter_name and name != adapter_name:
@@ -57,6 +78,9 @@ def ingest_source(
             # BeanShell-in-XML extraction is a SailPoint IIQ idiom; keep it
             # opt-in so generic XML sources don't grow bogus script pages.
             adapter_config = dict(config)
+            # Give adapters the source root so make_slug can derive path-aware,
+            # collision-free page ids (see adapters.base.make_slug).
+            adapter_config["_source_root"] = source_path
             try:
                 pages = adapter.extract(fpath, adapter_config)
             except Exception as e:
@@ -64,12 +88,33 @@ def ingest_source(
                 counts["errors"] += 1
                 continue
 
+            # Redact secrets from each page body BEFORE it is written to raw/,
+            # so nothing sensitive ever lands on disk or flows into the DB,
+            # search index, or exports downstream.
+            if redact_enabled:
+                for page in pages:
+                    clean, findings = redact_text(page.body, extra_patterns=extra_patterns)
+                    if findings:
+                        page.body = clean
+                        page.compute_hash()
+                        counts["redacted"] += sum(f["count"] for f in findings)
+                        counts["redacted_pages"] += 1
+
             # Write to raw/
             out_paths = []
             for page in pages:
                 out_path = raw_dir / page.category / f"{page.slug.split('/')[-1]}.md"
+                if str(out_path) in written_paths:
+                    prefix = hashlib.sha256(page.body.encode("utf-8")).hexdigest()[:8]
+                    out_path = out_path.with_name(f"{out_path.stem}-{prefix}.md")
+                    logger.warning(
+                        "Slug collision: raw path already written this run for "
+                        "page id %r; writing disambiguated file %s",
+                        page.slug, out_path,
+                    )
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(page.to_markdown(), encoding="utf-8")
+                written_paths.add(str(out_path))
                 out_paths.append(str(out_path))
 
             state.record_file(src_key, content_hash, ",".join(out_paths) if out_paths else "")
@@ -150,17 +195,24 @@ def ingest_all(
     state_path: Path,
 ) -> dict:
     """Run full ingestion from all configured sources."""
-    totals = {"total_added": 0, "total_modified": 0, "total_unchanged": 0, "total_errors": 0}
+    totals = {
+        "total_added": 0, "total_modified": 0, "total_unchanged": 0,
+        "total_errors": 0, "total_redacted": 0, "total_redacted_pages": 0,
+        "total_removed": 0,
+    }
+    security = config.get("security", {})
 
     # Ingest codebase sources
     for source in config.get("sources", []):
         src_path = Path(source["path"])
         if src_path.exists():
-            result = ingest_source(src_path, raw_dir, state_path, source)
+            result = ingest_source(src_path, raw_dir, state_path, source, security=security)
             totals["total_added"] += result["added"]
             totals["total_modified"] += result["modified"]
             totals["total_unchanged"] += result["unchanged"]
             totals["total_errors"] += result.get("errors", 0)
+            totals["total_redacted"] += result.get("redacted", 0)
+            totals["total_redacted_pages"] += result.get("redacted_pages", 0)
 
     # Ingest PDFs
     pdf_sources = config.get("pdf_sources", [])
@@ -171,10 +223,51 @@ def ingest_all(
         totals["total_unchanged"] += result["unchanged"]
         totals["total_errors"] += result.get("errors", 0)
 
+    # Prune sources that no longer exist. Only safe in ingest_all: this is a
+    # full run that discovered every source, so a recorded file now absent is
+    # genuinely deleted/renamed (a filtered --adapter run sees a subset and
+    # must never prune). Removing the recorded raw output(s) and the state
+    # entry keeps deletions from lingering in raw/, the DB, and exports.
+    totals["total_removed"] = _prune_deleted(config, state_path)
+
     # Generate token registry from all raw pages
     _generate_token_registry(raw_dir)
 
     return totals
+
+
+def _prune_deleted(config: dict, state_path: Path) -> int:
+    """Delete raw outputs and state entries for sources that vanished.
+
+    Returns the number of source entries removed. Uses the same discovery
+    logic as ingestion (via freshness._discover_current_files) so the current
+    file set exactly matches what the adapters would ingest today.
+    """
+    if not state_path.exists():
+        return 0
+
+    from llmwiki.freshness import _discover_current_files
+
+    state = BuildState(state_path)
+    current_files = _discover_current_files(config)
+    deleted = state.detect_deleted(current_files)
+    if not deleted:
+        return 0
+
+    for src_key in deleted:
+        entry = state.files.get(src_key, {})
+        raw_path = entry.get("raw_path", "")
+        for out_path in (raw_path.split(",") if raw_path else []):
+            if not out_path:
+                continue
+            try:
+                Path(out_path).unlink()
+            except OSError:
+                pass
+        state.files.pop(src_key, None)
+
+    state.save()
+    return len(deleted)
 
 
 def _generate_token_registry(raw_dir: Path) -> None:

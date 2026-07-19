@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+
+from llmwiki.redact import redact_text
 
 
 def export_llms_txt(
@@ -95,7 +98,19 @@ def export_llms_full_txt(
         if total > max_bytes:
             break
         lines.append(entry)
-    output.write_text("\n".join(lines), encoding="utf-8")
+
+    # Last line of defence: never ship a suspected secret in an export, even
+    # if one slipped past ingest redaction (e.g. a pre-redaction wiki rebuilt
+    # without re-ingesting). Redact the assembled content and warn loudly.
+    content = "\n".join(lines)
+    clean, findings = redact_text(content)
+    if findings:
+        summary = ", ".join(f"{f['kind']}={f['count']}" for f in findings)
+        print(
+            f"⚠ SECURITY: redacted suspected secrets from llms-full.txt ({summary})",
+            file=sys.stderr,
+        )
+    output.write_text(clean, encoding="utf-8")
 
 
 def export_graph_jsonld(

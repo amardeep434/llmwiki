@@ -34,7 +34,7 @@ Every page in `raw/` and `wiki/` follows this format:
 ```markdown
 ---
 title: "MyClassName"
-slug: "com-example/MyClassName"
+slug: "com/example/src/com/example/myclassname"
 category: "com/example"
 source_path: "/abs/path/to/MyClassName.java"
 language: "java"
@@ -91,9 +91,15 @@ llmwiki init          llmwiki ingest         llmwiki build         llmwiki expor
 1. Loads configuration from `llmwiki.json`
 2. For each configured source, runs matching adapters
 3. Each adapter produces `WikiPage` objects (slug, title, category, body, references)
-4. Pages are written as markdown files to `raw/{category}/{slug}.md`
+4. Pages are written as markdown files under `raw/{category}/`. The page **id**
+   (frontmatter `slug`) is `{category}/{path-relative-to-source-root}` — deriving
+   the trailing segments from the file's path relative to the source root keeps
+   two same-stem files in different directories from colliding. Files at the
+   source root keep a stem-only slug (`{category}/{stem}`); nested files include
+   their directory path.
 5. Content hashing (SHA-256) enables incremental ingestion — unchanged files are skipped
-6. Build state is tracked in `.llmwiki-state.json`
+6. Build state is tracked in `.llmwiki-state.json`; sources that disappear on a
+   full run are pruned (raw page + state entry removed)
 
 ### Step 3: Build (`llmwiki build`)
 
@@ -111,7 +117,10 @@ llmwiki init          llmwiki ingest         llmwiki build         llmwiki expor
    - Per-page JSON files for AI agents
 5. Generates search infrastructure:
    - `search-index.json` for client-side Cmd+K search
-   - `llmwiki.db` SQLite FTS5 database
+   - `llmwiki.db` SQLite FTS5 database — built in a temp file and swapped in
+     atomically (`os.replace`) so concurrent readers never see a partial or
+     locked DB; rows for pages no longer present are dropped (healing ghosts
+     from deleted sources and legacy databases)
 6. Writes `style.css` and `script.js` (theme system, search palette, mini graph)
 7. Applies the configured theme (CSS custom properties via `build.theme` or `--theme` flag)
 8. Writes `build-history.json` at the project root and copies it into `site/`

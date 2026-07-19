@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence, make_slug
 
 _JAVA_IMPORT_IN_BSH = re.compile(r"import\s+([\w.]+);")
 _REF_NAME_RE = re.compile(r'name="([^"]+)"')
@@ -112,7 +112,7 @@ class XMLAdapter(BaseAdapter):
 
         body = "\n\n".join(sections)
         parent = WikiPage(
-            slug=self._make_slug(path, category),
+            slug=make_slug(path, config.get("_source_root"), category),
             title=name,
             category=category,
             source_path=str(path),
@@ -174,9 +174,9 @@ class XMLAdapter(BaseAdapter):
         return tag.lower()
 
     def _make_slug(self, path: Path, category: str) -> str:
-        safe = re.sub(r"[^a-zA-Z0-9_-]", "-", path.stem)
-        cat_safe = re.sub(r"[^a-zA-Z0-9_/-]", "-", category)
-        return f"{cat_safe}/{safe}".lower().strip("-/")
+        """Stem-only slug (no source root). Retained for direct callers/tests;
+        the ingest path uses the shared :func:`make_slug` with a source root."""
+        return make_slug(path, None, category)
 
     def _fallback_page(self, path: Path, content: str) -> WikiPage:
         fence = _safe_fence(content)

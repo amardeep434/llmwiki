@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage
+from llmwiki.adapters.base import BaseAdapter, WikiPage, make_slug
 
 
 @register
@@ -29,7 +29,7 @@ class MarkdownAdapter(BaseAdapter):
         category = config.get("category", "docs")
 
         page = WikiPage(
-            slug=f"{category}/{path.stem}".lower(),
+            slug=make_slug(path, config.get("_source_root"), category),
             title=title,
             category=category,
             source_path=str(path),

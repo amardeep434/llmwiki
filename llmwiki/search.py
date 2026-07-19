@@ -154,6 +154,36 @@ def insert_pages(db_path: Path, pages: list[dict]) -> None:
     conn.close()
 
 
+def delete_pages_not_in(db_path: Path, ids) -> int:
+    """Delete DB rows whose id is not in the current page-id set.
+
+    Heals ghost rows left behind when a source file (and its page) is removed:
+    without this, a deleted page lingers in search results and exports forever.
+    The ``pages_ad`` DELETE trigger fires on each row, so the FTS index stays
+    in sync. Deletion is done in chunks of 500 ids to keep each statement well
+    under SQLite's bound-parameter limit. Returns the number of rows removed.
+    """
+    if not db_path.exists():
+        return 0
+
+    keep = set(ids)
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+    existing = [row[0] for row in c.execute("SELECT id FROM pages").fetchall()]
+    stale = [pid for pid in existing if pid not in keep]
+
+    removed = 0
+    for start in range(0, len(stale), 500):
+        chunk = stale[start:start + 500]
+        placeholders = ",".join("?" * len(chunk))
+        c.execute(f"DELETE FROM pages WHERE id IN ({placeholders})", chunk)
+        removed += len(chunk)
+
+    conn.commit()
+    conn.close()
+    return removed
+
+
 def sanitize_fts_query(query: str) -> str:
     """Convert a natural-language query into a safe FTS5 MATCH expression.
 

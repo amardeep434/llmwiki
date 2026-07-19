@@ -3,9 +3,48 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def _sanitize_slug_segment(segment: str) -> str:
+    """Lowercase a single slug segment, mapping non-alphanumerics to ``-``."""
+    segment = re.sub(r"[^a-zA-Z0-9_-]", "-", segment)
+    segment = re.sub(r"-+", "-", segment)
+    return segment.strip("-").lower()
+
+
+def make_slug(path: Path, source_root: Path | None, category: str) -> str:
+    """Build a page slug/id that is unique within a single source tree.
+
+    The slug is ``<category>/<relative-path-without-extension>``. Deriving the
+    trailing segments from the path *relative to the source root* means two
+    files sharing a stem in different directories get distinct ids — the fix
+    for the silent-overwrite bug where ``a/utils.py`` and ``b/utils.py`` both
+    collapsed to ``<category>/utils``. Files sitting directly at the source
+    root collapse to ``<category>/<stem>``, matching historical ids so flat
+    projects (and the tests that pin their ids) are unaffected.
+
+    ``source_root`` is ``None`` when an adapter is driven via a direct
+    ``extract()`` call (unit tests, ad-hoc use); in that case fall back to the
+    stem-only form, preserving pre-existing behaviour.
+    """
+    if source_root is not None:
+        try:
+            rel = Path(path).relative_to(source_root)
+        except ValueError:
+            rel = Path(Path(path).name)
+        segments = [*rel.parts[:-1], rel.stem]
+    else:
+        segments = [Path(path).stem]
+    rel_slug = "/".join(_sanitize_slug_segment(s) for s in segments if s)
+    cat_slug = "/".join(
+        _sanitize_slug_segment(s) for s in str(category).split("/") if s
+    )
+    slug = f"{cat_slug}/{rel_slug}" if cat_slug else rel_slug
+    return slug.strip("-/")
 
 
 @dataclass
