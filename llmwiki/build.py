@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
+import time
 from pathlib import Path
 
 from llmwiki.graph import build_graph, save_graph, _load_pages
@@ -19,7 +21,7 @@ from llmwiki.render.html import (
 from llmwiki.render.css import CSS
 from llmwiki.render.js import JS
 from llmwiki.render.themes import get_theme, get_all_js_themes, get_theme_labels, get_color_options
-from llmwiki.search import create_search_db, insert_pages
+from llmwiki.search import create_search_db, insert_pages, delete_pages_not_in
 
 
 def build_site(root: Path, config: dict, full: bool = False) -> dict:
@@ -294,9 +296,13 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # NOTE: body_plain is raw markdown with embedded source code, which is noisy
     # for FTS. A future improvement would strip markdown/code fences and produce
     # cleaner plain text for higher-quality full-text search results.
+    #
+    # Build into a temp DB and atomically swap it into place: readers (agents
+    # mid-query) never observe a half-populated or locked database, and a fresh
+    # temp DB drops any ghost rows left by earlier builds. delete_pages_not_in
+    # is belt-and-braces (heals a reused temp / the in-place fallback path).
     db_path = site_dir / "llmwiki.db"
-    create_search_db(db_path)
-    insert_pages(db_path, [
+    db_rows = [
         {
             "id": pid,
             "title": pdata.get("title", ""),
@@ -311,7 +317,8 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
             "url": pdata.get("url", ""),
         }
         for pid, pdata in pages.items()
-    ])
+    ]
+    _build_search_db_atomic(db_path, db_rows, set(pages.keys()))
 
     # 13. Generate graph.html (interactive knowledge graph)
     graph_html = render_graph_page(graph,
@@ -349,6 +356,51 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
         "last_build": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     return result
+
+
+def _build_search_db_atomic(db_path: Path, db_rows: list, ids: set) -> None:
+    """Populate a temp DB and atomically replace the live one.
+
+    ``os.replace`` is atomic on POSIX even while a reader holds the old file
+    open — the reader keeps its (now-unlinked) inode and new readers see the
+    fresh DB. On Windows a locked target raises PermissionError; retry a few
+    times, then fall back to writing the live DB in place (the pre-existing
+    behaviour) so a build never hard-fails on a transient lock.
+    """
+    tmp_path = db_path.with_name(db_path.name + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    try:
+        create_search_db(tmp_path)
+        insert_pages(tmp_path, db_rows)
+        delete_pages_not_in(tmp_path, ids)
+    except Exception:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        raise
+
+    for _ in range(3):
+        try:
+            os.replace(str(tmp_path), str(db_path))
+            return
+        except PermissionError:
+            time.sleep(0.2)
+
+    # Fallback: target stayed locked. Write in place (old behaviour) and clean
+    # up the temp file so it never lingers as a stale artifact.
+    print("llmwiki: warning — could not atomically swap search DB (target "
+          "locked); writing in place.")
+    create_search_db(db_path)
+    insert_pages(db_path, db_rows)
+    delete_pages_not_in(db_path, ids)
+    try:
+        tmp_path.unlink()
+    except OSError:
+        pass
 
 
 def _compute_recent_changes(root: Path, pages: dict) -> list:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence, make_slug
 
 
 @register
@@ -34,7 +34,7 @@ class GenericAdapter(BaseAdapter):
         body = f"## {path.name}\n\n{fence}{lang}\n{content}\n{fence}\n"
 
         page = WikiPage(
-            slug=f"misc/{path.stem}".lower(),
+            slug=make_slug(path, config.get("_source_root"), "misc"),
             title=path.name,
             category="misc",
             source_path=str(path),

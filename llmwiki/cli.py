@@ -339,6 +339,8 @@ def _cmd_ingest(args) -> int:
     print(f"  Added: {result['total_added']}")
     print(f"  Modified: {result['total_modified']}")
     print(f"  Unchanged: {result['total_unchanged']}")
+    if result.get("total_removed"):
+        print(f"  Removed: {result['total_removed']}")
     if result.get("total_errors"):
         print(f"  Errors: {result['total_errors']}")
     redacted = result.get("total_redacted", 0)

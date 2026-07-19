@@ -112,15 +112,20 @@ Treat `wiki/` as generated intermediate output. `llmwiki build` regenerates it f
 
 ### What happens to deleted source files?
 
-Currently, LLMWiki does not automatically remove pages from `raw/` when source files are deleted. To clean up:
+A full `llmwiki ingest` (or `llmwiki all`) now prunes them automatically: when a
+source file that was previously ingested no longer exists, its `raw/` page and
+state entry are removed and ingest reports `Removed: N`. The next `llmwiki build`
+drops the matching rows (and FTS entries) from `llmwiki.db`, so the page also
+disappears from search results and exports. Renamed files are handled the same
+way — the old id is pruned and the new one is added.
+
+Pruning only happens on full runs; a filtered `llmwiki ingest --adapter <name>`
+run sees only a subset of files and never prunes. A full rebuild still works if
+you prefer to start clean:
 
 ```bash
-llmwiki clean --raw
-llmwiki ingest
-llmwiki build
+llmwiki clean --all && llmwiki all
 ```
-
-Or equivalently: `llmwiki clean --all && llmwiki all`
 
 ---
 

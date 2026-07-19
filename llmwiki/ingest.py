@@ -46,6 +46,13 @@ def ingest_source(
     }
     exclude = config.get("exclude", [])
 
+    # Raw output paths written during THIS run. make_slug already guarantees
+    # unique page ids, but the raw filename is only the slug's last segment
+    # under its category dir, so two distinct ids can still target one file
+    # (e.g. src/a/utils.py and src/b/utils.py → raw/<cat>/utils.md). If that
+    # happens, disambiguate the second file rather than silently overwrite.
+    written_paths: set[str] = set()
+
     for name, adapter_cls in _REGISTRY.items():
         if adapter_name and name != adapter_name:
             continue
@@ -71,6 +78,9 @@ def ingest_source(
             # BeanShell-in-XML extraction is a SailPoint IIQ idiom; keep it
             # opt-in so generic XML sources don't grow bogus script pages.
             adapter_config = dict(config)
+            # Give adapters the source root so make_slug can derive path-aware,
+            # collision-free page ids (see adapters.base.make_slug).
+            adapter_config["_source_root"] = source_path
             try:
                 pages = adapter.extract(fpath, adapter_config)
             except Exception as e:
@@ -94,8 +104,17 @@ def ingest_source(
             out_paths = []
             for page in pages:
                 out_path = raw_dir / page.category / f"{page.slug.split('/')[-1]}.md"
+                if str(out_path) in written_paths:
+                    prefix = hashlib.sha256(page.body.encode("utf-8")).hexdigest()[:8]
+                    out_path = out_path.with_name(f"{out_path.stem}-{prefix}.md")
+                    logger.warning(
+                        "Slug collision: raw path already written this run for "
+                        "page id %r; writing disambiguated file %s",
+                        page.slug, out_path,
+                    )
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(page.to_markdown(), encoding="utf-8")
+                written_paths.add(str(out_path))
                 out_paths.append(str(out_path))
 
             state.record_file(src_key, content_hash, ",".join(out_paths) if out_paths else "")
@@ -179,6 +198,7 @@ def ingest_all(
     totals = {
         "total_added": 0, "total_modified": 0, "total_unchanged": 0,
         "total_errors": 0, "total_redacted": 0, "total_redacted_pages": 0,
+        "total_removed": 0,
     }
     security = config.get("security", {})
 
@@ -203,10 +223,51 @@ def ingest_all(
         totals["total_unchanged"] += result["unchanged"]
         totals["total_errors"] += result.get("errors", 0)
 
+    # Prune sources that no longer exist. Only safe in ingest_all: this is a
+    # full run that discovered every source, so a recorded file now absent is
+    # genuinely deleted/renamed (a filtered --adapter run sees a subset and
+    # must never prune). Removing the recorded raw output(s) and the state
+    # entry keeps deletions from lingering in raw/, the DB, and exports.
+    totals["total_removed"] = _prune_deleted(config, state_path)
+
     # Generate token registry from all raw pages
     _generate_token_registry(raw_dir)
 
     return totals
+
+
+def _prune_deleted(config: dict, state_path: Path) -> int:
+    """Delete raw outputs and state entries for sources that vanished.
+
+    Returns the number of source entries removed. Uses the same discovery
+    logic as ingestion (via freshness._discover_current_files) so the current
+    file set exactly matches what the adapters would ingest today.
+    """
+    if not state_path.exists():
+        return 0
+
+    from llmwiki.freshness import _discover_current_files
+
+    state = BuildState(state_path)
+    current_files = _discover_current_files(config)
+    deleted = state.detect_deleted(current_files)
+    if not deleted:
+        return 0
+
+    for src_key in deleted:
+        entry = state.files.get(src_key, {})
+        raw_path = entry.get("raw_path", "")
+        for out_path in (raw_path.split(",") if raw_path else []):
+            if not out_path:
+                continue
+            try:
+                Path(out_path).unlink()
+            except OSError:
+                pass
+        state.files.pop(src_key, None)
+
+    state.save()
+    return len(deleted)
 
 
 def _generate_token_registry(raw_dir: Path) -> None:

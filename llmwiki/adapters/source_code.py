@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from llmwiki.adapters import register
-from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence
+from llmwiki.adapters.base import BaseAdapter, WikiPage, _safe_fence, make_slug
 
 LANG_MAP: dict[str, str] = {
     ".java": "java", ".py": "python", ".js": "javascript", ".ts": "typescript",
@@ -113,7 +113,7 @@ class SourceCodeAdapter(BaseAdapter):
         body += f"\n\n## Source Code\n\n<details>\n<summary>Full source ({len(content.splitlines())} lines)</summary>\n\n{fence}{lang}\n{content}\n{fence}\n\n</details>\n"
 
         page = WikiPage(
-            slug=self._make_slug(path, category),
+            slug=make_slug(path, config.get("_source_root"), category),
             title=title,
             category=category,
             source_path=str(path),
@@ -247,6 +247,6 @@ class SourceCodeAdapter(BaseAdapter):
         return "\n\n".join(sections), refs, tags
 
     def _make_slug(self, path: Path, category: str) -> str:
-        safe = re.sub(r"[^a-zA-Z0-9_-]", "-", path.stem)
-        cat_safe = re.sub(r"[^a-zA-Z0-9_-]", "-", category)
-        return f"{cat_safe}/{safe}".lower().strip("-/")
+        """Stem-only slug (no source root). Retained for direct callers/tests;
+        the ingest path uses the shared :func:`make_slug` with a source root."""
+        return make_slug(path, None, category)
