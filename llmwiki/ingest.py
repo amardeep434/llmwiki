@@ -202,6 +202,19 @@ def ingest_all(
     }
     security = config.get("security", {})
 
+    # Ingest explicitly-configured PDFs FIRST: a PDF living inside a source
+    # directory is also discovered by the generic source scan, which knows no
+    # label. Running the labeled pass first records the file with its
+    # configured label; the later source scan then classifies it "unchanged"
+    # instead of shadowing it with the default category (dogfood finding).
+    pdf_sources = config.get("pdf_sources", [])
+    if pdf_sources:
+        result = ingest_pdfs(pdf_sources, raw_dir, state_path)
+        totals["total_added"] += result["added"]
+        totals["total_modified"] += result["modified"]
+        totals["total_unchanged"] += result["unchanged"]
+        totals["total_errors"] += result.get("errors", 0)
+
     # Ingest codebase sources
     for source in config.get("sources", []):
         src_path = Path(source["path"])
@@ -213,15 +226,6 @@ def ingest_all(
             totals["total_errors"] += result.get("errors", 0)
             totals["total_redacted"] += result.get("redacted", 0)
             totals["total_redacted_pages"] += result.get("redacted_pages", 0)
-
-    # Ingest PDFs
-    pdf_sources = config.get("pdf_sources", [])
-    if pdf_sources:
-        result = ingest_pdfs(pdf_sources, raw_dir, state_path)
-        totals["total_added"] += result["added"]
-        totals["total_modified"] += result["modified"]
-        totals["total_unchanged"] += result["unchanged"]
-        totals["total_errors"] += result.get("errors", 0)
 
     # Prune sources that no longer exist. Only safe in ingest_all: this is a
     # full run that discovered every source, so a recorded file now absent is

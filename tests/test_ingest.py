@@ -43,3 +43,37 @@ class TestIngest:
         config = create_default_config("Test", str(src))
         result = ingest_all(config, raw_dir, tmp_path / ".llmwiki-state.json")
         assert result["total_added"] >= 1
+
+
+def test_pdf_inside_source_dir_keeps_configured_label(tmp_path, monkeypatch):
+    """Dogfood finding: a PDF under a source dir was ingested by the source
+    scan (default label) before ingest_pdfs could apply the configured label.
+    PDF sources must be ingested first so their label wins."""
+    from llmwiki.ingest import ingest_all
+    from llmwiki.adapters.base import WikiPage
+
+    src = tmp_path / "proj"
+    (src / "docs-pdf").mkdir(parents=True)
+    pdf = src / "docs-pdf" / "guide.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    raw = tmp_path / "raw"; raw.mkdir()
+
+    def fake_extract(self, path, config):
+        page = WikiPage(
+            slug=f"{config.get('label', 'docs')}/guide", title="Guide",
+            category=config.get("label", "docs"), source_path=str(path),
+            body="guide body",
+        )
+        page.compute_hash()
+        return [page]
+
+    from llmwiki.adapters import pdf_adapter
+    monkeypatch.setattr(pdf_adapter.PDFAdapter, "extract", fake_extract)
+
+    config = {
+        "sources": [{"path": str(src), "exclude": []}],
+        "pdf_sources": [{"path": str(src / "docs-pdf"), "label": "papers"}],
+    }
+    ingest_all(config, raw, tmp_path / "state.json")
+    assert (raw / "papers" / "guide.md").exists()
+    assert not (raw / "docs" / "guide.md").exists()

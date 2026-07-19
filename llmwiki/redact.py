@@ -69,8 +69,18 @@ _GENERIC_CREDENTIAL = re.compile(
 )
 
 # Values that are obviously placeholders / indirections, not real secrets.
-_PLACEHOLDER_PREFIXES = ("${", "%%", "<", "{{", "$", "os.environ", "process.env")
+# «REDACTED included so already-scrubbed text is idempotent: without it, the
+# marker itself re-triggers detection and lint flags redacted pages forever.
+_PLACEHOLDER_PREFIXES = ("${", "%%", "<", "{{", "$", "os.environ", "process.env",
+                         "«REDACTED")
 _PLACEHOLDER_WORDS = {"changeme", "password", "example"}
+
+# Unquoted values shaped like code — a call or a dotted attribute path — are
+# expressions (``token = fetch_token(user)``, ``key = settings.api.key``), not
+# literal secrets. Redacting them mangles legitimate source pages (found by
+# dogfooding on llmwiki's own repo, where ``_AWS_ACCESS_KEY = re.compile(...)``
+# was scrubbed). Quoted values are always literal and stay candidates.
+_CODE_EXPR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 
 
 def _is_placeholder_value(value: str) -> bool:
@@ -148,7 +158,10 @@ def redact_text(
     # Generic assignments: keep key+separator+quote, redact the value, unless
     # the value is a placeholder.
     def _generic_repl(match: re.Match) -> str | None:
-        if _is_placeholder_value(match.group("val")):
+        value = match.group("val")
+        if _is_placeholder_value(value):
+            return None
+        if not match.group("quote") and ("(" in value or _CODE_EXPR.match(value)):
             return None
         return (
             match.group("key") + match.group("sep")
