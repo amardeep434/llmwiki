@@ -90,3 +90,32 @@ def test_token_registry_uses_plain_names_not_wikilinks(tmp_path):
     registry = (raw / "tokens" / "registry.md").read_text(encoding="utf-8")
     assert "[[" not in registry
     assert "`app`" in registry
+
+
+def test_pdf_pages_are_redacted(tmp_path, monkeypatch):
+    """Phase V: vendor-guide PDFs with credential examples skipped redaction
+    entirely and then failed the secret-suspect lint gate."""
+    from llmwiki.ingest import ingest_pdfs
+    from llmwiki.adapters.base import WikiPage
+
+    pdf = tmp_path / "guide.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    raw = tmp_path / "raw"; raw.mkdir()
+
+    def fake_extract(self, path, config):
+        page = WikiPage(
+            slug="docs/guide", title="Guide", category="docs",
+            source_path=str(path),
+            body='Set password = "hunter2secret9value" in the config.',
+        )
+        page.compute_hash()
+        return [page]
+
+    from llmwiki.adapters import pdf_adapter
+    monkeypatch.setattr(pdf_adapter.PDFAdapter, "extract", fake_extract)
+
+    result = ingest_pdfs([{"path": str(pdf), "label": "docs"}],
+                         raw, tmp_path / "state.json")
+    assert result["redacted"] == 1
+    content = (raw / "docs" / "guide.md").read_text(encoding="utf-8")
+    assert "hunter2secret9value" not in content

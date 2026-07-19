@@ -20,7 +20,9 @@ import re
 
 logger = logging.getLogger(__name__)
 
-_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+# Target must contain at least one word character: PDFs occasionally carry
+# literal [[()]]-style bracket runs that are not links (Phase V finding).
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]*\w[^\]|]*)(?:\|[^\]]+)?\]\]")
 _JAVA_IMPORT_RE = re.compile(r"import\s+([\w.]+);")
 _CLASS_REF_RE = re.compile(r"(?:new\s+|extends\s+|implements\s+)([\w.]+)")
 

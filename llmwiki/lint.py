@@ -29,7 +29,9 @@ def lint_wiki(raw_dir: Path, graph: dict) -> list[dict]:
     if raw_dir.exists():
         for md_file in raw_dir.rglob("*.md"):
             content = md_file.read_text(encoding="utf-8", errors="replace")
-            wikilinks = re.findall(r"\[\[([^\]|]+)", content)
+            # Require a word char in the target — PDFs carry literal [[()]]
+            # bracket runs that are not links (Phase V finding).
+            wikilinks = re.findall(r"\[\[([^\]|]*\w[^\]|]*)", content)
             for link in wikilinks:
                 if link.lower() not in valid_targets:
                     issues.append({

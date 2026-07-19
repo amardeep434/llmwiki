@@ -38,3 +38,17 @@ class TestLint:
         (raw_dir / "clean.md").write_text("# Clean\n\nOrdinary documentation.\n")
         issues = lint_wiki(tmp_path / "raw", {"nodes": []})
         assert not [i for i in issues if i["rule"] == "secret-suspect"]
+
+
+def test_bracket_run_without_word_chars_not_a_wikilink(tmp_path):
+    """PDF text like [[()]] must not register as a broken link."""
+    from llmwiki.lint import lint_wiki
+    raw = tmp_path / "raw"
+    (raw / "docs").mkdir(parents=True)
+    (raw / "docs" / "guide.md").write_text(
+        "---\ntitle: \"G\"\nslug: \"docs/guide\"\ncategory: docs\n---\n\n"
+        "code sample: [[()]] and [[,]]\n", encoding="utf-8")
+    graph = {"nodes": [{"id": "docs/guide", "title": "G",
+                        "in_degree": 1, "out_degree": 0}], "edges": []}
+    issues = lint_wiki(raw, graph)
+    assert not [i for i in issues if i["rule"] == "broken_link"]
