@@ -50,7 +50,10 @@ def check_freshness(config: dict, state_path: Path) -> dict:
         rec_mtime = meta.get("mtime")
         rec_size = meta.get("size")
         if rec_mtime is not None and rec_size is not None:
-            if int(st.st_mtime) == int(rec_mtime) and st.st_size == rec_size:
+            # Exact mtime match only — truncating to seconds would let a
+            # same-second, same-size edit skip hash confirmation. A spurious
+            # mismatch just costs one hash check, never a false "stale".
+            if st.st_mtime == rec_mtime and st.st_size == rec_size:
                 continue
         # stat changed (or old state without stat info) — confirm by hash
         try:

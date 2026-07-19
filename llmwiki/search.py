@@ -165,8 +165,9 @@ def sanitize_fts_query(query: str) -> str:
     matches still rank (BM25 puts full matches first).
     """
     import re
-    tokens = [re.sub(r"[^\w]", "", t) for t in query.split()]
-    tokens = [t for t in tokens if t]
+    # Split on punctuation rather than stripping it: "auth-flow" must become
+    # the two terms FTS5 indexed ("auth", "flow"), not the unmatched "authflow".
+    tokens = [t for t in re.split(r"[^\w]+", query) if t]
     if not tokens:
         return ""
     return " OR ".join(f'"{t}"' for t in tokens)

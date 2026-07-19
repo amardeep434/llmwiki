@@ -109,3 +109,18 @@ def test_format_benchmark_report():
     assert "10,000" in report
     assert "login" in report
     assert "Methodology" in report
+
+
+def test_tie_break_prefers_smaller_files(tmp_path):
+    """Equal-scoring files must tie-break to the smaller one (conservative baseline)."""
+    src = tmp_path / "src"
+    src.mkdir()
+    for i in range(6):
+        (src / f"big{i}.py").write_text("login\n" + "x = 1\n" * 500)
+    (src / "small.py").write_text("login\n")
+    tokens, files = count_raw_tokens([src], "login")
+    # small.py must be among the top-5 picked over one of the big ties
+    small_tokens = count_tokens((src / "small.py").read_text())
+    big_tokens = count_tokens((src / "big0.py").read_text())
+    assert tokens < 5 * big_tokens
+    assert files == 5

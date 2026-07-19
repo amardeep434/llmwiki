@@ -75,7 +75,9 @@ def count_raw_tokens(source_dirs: list[Path], query: str,
             if hits:
                 scored.append((hits, count_tokens(content), str(f)))
 
-    scored.sort(key=lambda x: (-x[0], -x[1]))
+    # Ties broken toward SMALLER files: a conservative baseline may
+    # understate savings but never inflates them.
+    scored.sort(key=lambda x: (-x[0], x[1]))
     top = scored[:top_k]
     return sum(tokens for _, tokens, _ in top), len(top)
 

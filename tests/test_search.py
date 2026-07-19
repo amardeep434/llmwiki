@@ -133,3 +133,9 @@ class TestQuerySanitization:
             [{"id": "big", "title": "Big File", "category": "core"}], db)
         assert "summary here" in out
         assert "SECRET_SOURCE" not in out
+
+    def test_hyphenated_terms_split_not_merged(self):
+        from llmwiki.search import sanitize_fts_query
+        expr = sanitize_fts_query("auth-flow")
+        assert '"auth"' in expr and '"flow"' in expr
+        assert "authflow" not in expr

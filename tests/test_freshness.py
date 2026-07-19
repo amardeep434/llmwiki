@@ -92,3 +92,18 @@ def test_state_records_mtime_and_size(tmp_path):
     entry = state.files[str(f)]
     assert "mtime" in entry
     assert entry["size"] == f.stat().st_size
+
+
+def test_same_second_same_size_change_detected(project):
+    """A same-size edit must be caught even if mtime seconds are equal (hash confirms)."""
+    _ingest_state(project)
+    f = project["src"] / "auth.py"
+    state_mtime = __import__("json").loads(
+        project["state_path"].read_text(encoding="utf-8")
+    )["files"][str(f)]["mtime"]
+    # Same byte length, different content; force recorded whole-second mtime
+    f.write_text("def login(): res2\n")
+    import os
+    os.utime(f, (int(state_mtime), int(state_mtime)))
+    result = check_freshness(project["config"], project["state_path"])
+    assert result["modified"] == 1
