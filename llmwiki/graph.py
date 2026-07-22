@@ -20,9 +20,10 @@ def build_graph(
     Curated pages (Phase S) are merged in when ``curated_dir`` is given so
     they participate in importance/clusters exactly like extracted pages;
     each curated page contributes ``cites`` edges to the source pages it
-    derives from. Every ``build_graph`` call site passes ``curated_dir`` so
-    the curated layer is visible consistently across build, graph, export,
-    and lint.
+    derives from. ``curated_dir`` is optional and defaults to ``None`` (the
+    pre-Phase-S behaviour, used by unit tests that call ``build_graph`` with
+    only ``raw_dir``); the production pipeline (build, graph, export, lint)
+    passes it so the curated layer is visible consistently.
 
     Returns dict with nodes, edges, clusters, stats.
     """

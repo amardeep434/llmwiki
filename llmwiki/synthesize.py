@@ -89,6 +89,10 @@ def build_source_mtime_map(raw_dir: Path) -> dict[str, float]:
 
     Used to answer "did a source change after this curated page was written?".
     A light frontmatter scan rather than a full page load keeps it cheap.
+
+    Keys are lowercased: page ids are compared case-insensitively throughout
+    (graph edges, curated coverage, this staleness map) so a citation whose
+    casing differs from the slug still resolves.
     """
     mtimes: dict[str, float] = {}
     if not raw_dir.exists():
@@ -101,7 +105,7 @@ def build_source_mtime_map(raw_dir: Path) -> dict[str, float]:
         meta, _ = _parse_frontmatter(content)
         slug = meta.get("slug", md_file.stem)
         try:
-            mtimes[slug] = md_file.stat().st_mtime
+            mtimes[slug.lower()] = md_file.stat().st_mtime
         except OSError:
             continue
     return mtimes
@@ -112,13 +116,18 @@ def changed_sources(
     sources: list[str],
     mtime_map: dict[str, float],
 ) -> list[str]:
-    """Return the cited source ids whose raw file changed after synthesis."""
+    """Return the cited source ids whose raw file changed after synthesis.
+
+    Source ids are matched case-insensitively against ``mtime_map`` (whose
+    keys are lowercased), but the originally-cited casing is returned so
+    messages echo what the curated page actually wrote.
+    """
     syn = _iso_to_epoch(synthesized_at)
     if syn is None:
         # Unknown synthesis time: every locatable source counts as "changed"
         # so the page surfaces for a refresh.
-        return [s for s in sources if s in mtime_map]
-    return [s for s in sources if mtime_map.get(s, 0.0) > syn]
+        return [s for s in sources if s.lower() in mtime_map]
+    return [s for s in sources if mtime_map.get(s.lower(), 0.0) > syn]
 
 
 def is_curated_stale(
@@ -130,11 +139,12 @@ def is_curated_stale(
 
     A missing/unparseable ``synthesized_at`` counts as stale: without a
     trustworthy timestamp we cannot prove the page reflects its sources.
+    Source ids are matched case-insensitively (see ``build_source_mtime_map``).
     """
     syn = _iso_to_epoch(synthesized_at)
     if syn is None:
         return True
-    return any(mtime_map.get(s, 0.0) > syn for s in sources)
+    return any(mtime_map.get(s.lower(), 0.0) > syn for s in sources)
 
 
 # ---------------------------------------------------------------------------
@@ -162,10 +172,13 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
     curated_pages = _load_curated_pages(curated_dir)
     mtime_map = build_source_mtime_map(raw_dir)
 
-    # Every source id already covered by some curated page.
+    # Every source id already covered by some curated page. Ids are compared
+    # case-insensitively to match graph edge resolution and the curated lint,
+    # so a citation with different casing still counts as coverage (no dup
+    # create item).
     covered: set[str] = set()
     for page in curated_pages.values():
-        covered.update(page.get("sources", []))
+        covered.update(s.lower() for s in page.get("sources", []))
 
     # 1. Refresh items (highest priority).
     refresh_items: list[dict] = []
@@ -197,7 +210,7 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
         if cat.startswith("curated/") or cat.startswith("tokens") or cat == "tokens":
             continue
         nid = node.get("id", "")
-        if not nid or nid in covered:
+        if not nid or nid.lower() in covered:
             continue
         suggested_type = "module" if node.get("language") else "concept"
         slug = nid.split("/")[-1]
@@ -212,7 +225,9 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
             ),
         })
 
-    return (refresh_items + create_items)[:budget]
+    # Clamp: a negative budget would make the [:budget] slice drop items from
+    # the end instead of capping (CLI help says "Max work items").
+    return (refresh_items + create_items)[:max(0, budget)]
 
 
 def _load_xref_nodes(xref_path: Path) -> list[dict]:

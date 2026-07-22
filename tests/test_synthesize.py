@@ -289,6 +289,44 @@ class TestWorkList:
         items = compute_work_list(work, config, budget=1)
         assert len(items) <= 1
 
+    def test_negative_budget_yields_empty(self, tmp_path):
+        # Regression: a negative --budget must cap at zero, not slice items
+        # off the end (Python's [:‑1] behaviour). `--budget -1` means "none".
+        work, config = self._built(tmp_path)
+        assert compute_work_list(work, config, budget=-1) == []
+
+    def test_staleness_is_case_insensitive(self, tmp_path):
+        # Regression: the staleness helpers must also match a citation whose
+        # casing differs from the source slug, else a changed source never
+        # produces a refresh item (or a stale-claim lint).
+        work, config = self._built(tmp_path)
+        from llmwiki.graph import _load_pages
+        auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
+        _write_curated(work / "curated", "notes/a.md", sources=[auth_id.upper()],
+                       synthesized_at="2000-01-01T00:00:00Z")
+        build_site(work, config, full=True)
+        raw_file = next(p for p in (work / "raw").rglob("*.md")
+                        if p.stem.endswith("auth"))
+        future = raw_file.stat().st_mtime + 10_000
+        os.utime(raw_file, (future, future))
+        items = compute_work_list(work, config)
+        assert items and items[0]["kind"] == "refresh"
+        assert items[0]["target"] == "curated/notes/a.md"
+
+    def test_coverage_is_case_insensitive(self, tmp_path):
+        # Regression: coverage detection must match a citation whose casing
+        # differs from the source slug, so no duplicate `create` item is
+        # emitted for an already-covered page.
+        work, config = self._built(tmp_path)
+        from llmwiki.graph import _load_pages
+        auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
+        _write_curated(work / "curated", "notes/a.md", sources=[auth_id.upper()],
+                       synthesized_at="2099-01-01T00:00:00Z")
+        build_site(work, config, full=True)
+        items = compute_work_list(work, config)
+        assert not any(auth_id.lower() in [s.lower() for s in i["sources"]]
+                       for i in items if i["kind"] == "create")
+
     def test_json_shape(self, tmp_path):
         work, config = self._built(tmp_path)
         items = compute_work_list(work, config)
