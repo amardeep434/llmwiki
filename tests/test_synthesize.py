@@ -295,6 +295,24 @@ class TestWorkList:
         work, config = self._built(tmp_path)
         assert compute_work_list(work, config, budget=-1) == []
 
+    def test_staleness_is_case_insensitive(self, tmp_path):
+        # Copilot PR#5 review: coverage was case-insensitive but the staleness
+        # helpers were not — a citation with different casing would never
+        # produce a refresh item even when the cited source changed.
+        work, config = self._built(tmp_path)
+        from llmwiki.graph import _load_pages
+        auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
+        _write_curated(work / "curated", "notes/a.md", sources=[auth_id.upper()],
+                       synthesized_at="2000-01-01T00:00:00Z")
+        build_site(work, config, full=True)
+        raw_file = next(p for p in (work / "raw").rglob("*.md")
+                        if p.stem.endswith("auth"))
+        future = raw_file.stat().st_mtime + 10_000
+        os.utime(raw_file, (future, future))
+        items = compute_work_list(work, config)
+        assert items and items[0]["kind"] == "refresh"
+        assert items[0]["target"] == "curated/notes/a.md"
+
     def test_coverage_is_case_insensitive(self, tmp_path):
         # Copilot PR#4 review: a citation with different casing must still
         # count as coverage (ids are case-insensitive elsewhere).
