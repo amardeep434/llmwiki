@@ -289,6 +289,25 @@ class TestWorkList:
         items = compute_work_list(work, config, budget=1)
         assert len(items) <= 1
 
+    def test_negative_budget_yields_empty(self, tmp_path):
+        # Copilot PR#4 review: [:budget] with a negative value dropped items
+        # from the end instead of capping. --budget -1 must mean "none".
+        work, config = self._built(tmp_path)
+        assert compute_work_list(work, config, budget=-1) == []
+
+    def test_coverage_is_case_insensitive(self, tmp_path):
+        # Copilot PR#4 review: a citation with different casing must still
+        # count as coverage (ids are case-insensitive elsewhere).
+        work, config = self._built(tmp_path)
+        from llmwiki.graph import _load_pages
+        auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
+        _write_curated(work / "curated", "notes/a.md", sources=[auth_id.upper()],
+                       synthesized_at="2099-01-01T00:00:00Z")
+        build_site(work, config, full=True)
+        items = compute_work_list(work, config)
+        assert not any(auth_id.lower() in [s.lower() for s in i["sources"]]
+                       for i in items if i["kind"] == "create")
+
     def test_json_shape(self, tmp_path):
         work, config = self._built(tmp_path)
         items = compute_work_list(work, config)

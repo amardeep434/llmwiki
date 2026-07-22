@@ -162,10 +162,13 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
     curated_pages = _load_curated_pages(curated_dir)
     mtime_map = build_source_mtime_map(raw_dir)
 
-    # Every source id already covered by some curated page.
+    # Every source id already covered by some curated page. Ids are compared
+    # case-insensitively to match graph edge resolution and the curated lint,
+    # so a citation with different casing still counts as coverage (no dup
+    # create item).
     covered: set[str] = set()
     for page in curated_pages.values():
-        covered.update(page.get("sources", []))
+        covered.update(s.lower() for s in page.get("sources", []))
 
     # 1. Refresh items (highest priority).
     refresh_items: list[dict] = []
@@ -197,7 +200,7 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
         if cat.startswith("curated/") or cat.startswith("tokens") or cat == "tokens":
             continue
         nid = node.get("id", "")
-        if not nid or nid in covered:
+        if not nid or nid.lower() in covered:
             continue
         suggested_type = "module" if node.get("language") else "concept"
         slug = nid.split("/")[-1]
@@ -212,7 +215,9 @@ def compute_work_list(wiki_root: Path, config: dict, budget: int = 10) -> list[d
             ),
         })
 
-    return (refresh_items + create_items)[:budget]
+    # Clamp: a negative budget would make the [:budget] slice drop items from
+    # the end instead of capping (CLI help says "Max work items").
+    return (refresh_items + create_items)[:max(0, budget)]
 
 
 def _load_xref_nodes(xref_path: Path) -> list[dict]:

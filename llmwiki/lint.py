@@ -104,7 +104,7 @@ def _lint_curated(raw_dir: Path, curated_dir: Path, graph: dict) -> list[dict]:
                 "rule": "uncited",
                 "severity": "warning",
                 "page": pid,
-                "message": "Curated page has no sources: — claims cannot be traced",
+                "message": "Curated page has no sources; its claims cannot be traced",
             })
 
         # bad-source — a cited id matches no existing page.
