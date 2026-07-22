@@ -290,15 +290,15 @@ class TestWorkList:
         assert len(items) <= 1
 
     def test_negative_budget_yields_empty(self, tmp_path):
-        # Copilot PR#4 review: [:budget] with a negative value dropped items
-        # from the end instead of capping. --budget -1 must mean "none".
+        # Regression: a negative --budget must cap at zero, not slice items
+        # off the end (Python's [:‑1] behaviour). `--budget -1` means "none".
         work, config = self._built(tmp_path)
         assert compute_work_list(work, config, budget=-1) == []
 
     def test_staleness_is_case_insensitive(self, tmp_path):
-        # Copilot PR#5 review: coverage was case-insensitive but the staleness
-        # helpers were not — a citation with different casing would never
-        # produce a refresh item even when the cited source changed.
+        # Regression: the staleness helpers must also match a citation whose
+        # casing differs from the source slug, else a changed source never
+        # produces a refresh item (or a stale-claim lint).
         work, config = self._built(tmp_path)
         from llmwiki.graph import _load_pages
         auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
@@ -314,8 +314,9 @@ class TestWorkList:
         assert items[0]["target"] == "curated/notes/a.md"
 
     def test_coverage_is_case_insensitive(self, tmp_path):
-        # Copilot PR#4 review: a citation with different casing must still
-        # count as coverage (ids are case-insensitive elsewhere).
+        # Regression: coverage detection must match a citation whose casing
+        # differs from the source slug, so no duplicate `create` item is
+        # emitted for an already-covered page.
         work, config = self._built(tmp_path)
         from llmwiki.graph import _load_pages
         auth_id = next(pid for pid in _load_pages(work / "raw") if pid.endswith("auth"))
