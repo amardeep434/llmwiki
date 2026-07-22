@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — synthesis layer (Phase S)
+
+- **Curated knowledge layer**: a new `curated/**/*.md` tree (sibling of `raw/`)
+  holds hand/agent-written pages — cross-file explanations, architecture,
+  provisioning flows, saved Q&A — that llmwiki never generates or deletes.
+  Curated pages carry `type` (module/concept/entity/note), `sources:` (page
+  ids they derive from), and a `synthesized_at` timestamp; they merge into the
+  graph with `cites` edges, are floored to importance ≥ 0.5 so they outrank
+  extracted pages, and flow through the DB, search index, and exports.
+  `llmwiki search --agent` marks them `[curated]`.
+- **`llmwiki init` writes `SCHEMA.md`** — the conventions for writing curated
+  pages (page types, required frontmatter, the "cite every claim" rule, the
+  150-line limit, `[[page-id]]` linking, `> CONTRADICTION:` blockquotes).
+  Re-running `init` never overwrites an edited `SCHEMA.md`.
+- **`llmwiki synthesize`**: computes a prioritised work order — `refresh` items
+  for curated pages whose cited sources changed since `synthesized_at`, then
+  `create` items for the highest-importance extracted pages no curated page
+  covers yet. Honours `--budget` (refresh first), prints a manifest (or
+  `--json`), and writes per-item instructions to `synthesis-todo.md`.
+- **Curated-aware lint**: new rules `stale-claim` (error), `uncited` (warning),
+  `bad-source` (error), and `missing-type` (warning) validate the curated layer.
+
 ### Added — security hardening
 
 - **Sensitive-file exclusion floor**: secret-bearing files (`.env`, `*.pem`,

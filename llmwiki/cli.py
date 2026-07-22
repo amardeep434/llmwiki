@@ -102,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     p_lint = sub.add_parser("lint", help="Check for broken links and orphans")
     p_lint.add_argument("--config", default="llmwiki.json", help="Config file path")
 
+    # synthesize
+    p_syn = sub.add_parser("synthesize", help="List curated pages to write or refresh")
+    p_syn.add_argument("--budget", type=int, default=10, help="Max work items (default: 10)")
+    p_syn.add_argument("--json", action="store_true", dest="json_output", help="Output as JSON")
+    p_syn.add_argument("--config", default="llmwiki.json", help="Config file path")
+
     # stats
     p_stats = sub.add_parser("stats", help="Print inventory statistics")
     p_stats.add_argument("--config", default="llmwiki.json", help="Config file path")
@@ -171,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         "graph": _cmd_graph,
         "export": _cmd_export,
         "lint": _cmd_lint,
+        "synthesize": _cmd_synthesize,
         "all": _cmd_all,
         "stats": _cmd_stats,
         "status": _cmd_status,
@@ -283,8 +290,15 @@ def _cmd_init(args) -> int:
         print(f"  Found {len(files)} files for adapter '{adapter_name}'")
 
     # Create directories
-    for d in ["raw", "wiki", "site"]:
+    for d in ["raw", "wiki", "site", "curated"]:
         (output / d).mkdir(parents=True, exist_ok=True)
+
+    # Write curated-layer conventions (Phase S). Skip if it already exists so
+    # a user's/agent's edits to SCHEMA.md survive re-init.
+    from llmwiki.synthesize import SCHEMA_MD
+    schema_path = output / "SCHEMA.md"
+    if not schema_path.exists():
+        schema_path.write_text(SCHEMA_MD, encoding="utf-8")
 
     # Create config with all collected sources
     from llmwiki.config import DEFAULT_EXCLUDE
@@ -600,8 +614,9 @@ def _cmd_graph(args) -> int:
     root = cfg_path.parent
     raw_dir = root / "raw"
     site_dir = root / config.get("build", {}).get("out_dir", "site")
+    curated_dir = root / "curated"
     print("📊 Building knowledge graph...")
-    graph = build_graph(raw_dir, config)
+    graph = build_graph(raw_dir, config, curated_dir=curated_dir)
     save_graph(graph, site_dir / "cross-references.json")
     print(f"  Nodes: {graph['stats']['total_pages']}")
     print(f"  Edges: {graph['stats']['total_edges']}")
@@ -612,17 +627,19 @@ def _cmd_graph(args) -> int:
 def _cmd_export(args) -> int:
     """Generate AI-consumable exports."""
     from llmwiki.config import load_config
-    from llmwiki.graph import _load_pages, build_graph
+    from llmwiki.graph import _load_pages, _load_curated_pages, build_graph
     from llmwiki.exporters import export_all
 
     cfg_path = Path(args.config)
     config = load_config(cfg_path)
     root = cfg_path.parent
     raw_dir = root / "raw"
+    curated_dir = root / "curated"
     site_dir = root / config.get("build", {}).get("out_dir", "site")
     pages = _load_pages(raw_dir)
+    pages.update(_load_curated_pages(curated_dir))
     # Build graph for edge data in graph.jsonld export
-    graph = build_graph(raw_dir, config)
+    graph = build_graph(raw_dir, config, curated_dir=curated_dir)
     for pid, pdata in pages.items():
         cat = (pdata.get("category", "") or "uncategorized").lower()
         slug = pid.split("/")[-1] if "/" in pid else pid
@@ -646,15 +663,61 @@ def _cmd_lint(args) -> int:
     config = load_config(cfg_path)
     root = cfg_path.parent
     raw_dir = root / "raw"
+    curated_dir = root / "curated"
     print("🔍 Linting wiki...")
-    graph = build_graph(raw_dir, config)
-    issues = lint_wiki(raw_dir, graph)
+    graph = build_graph(raw_dir, config, curated_dir=curated_dir)
+    issues = lint_wiki(raw_dir, graph, curated_dir=curated_dir)
     for issue in issues:
         icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}.get(issue["severity"], "•")
         print(f"  {icon} [{issue['rule']}] {issue['page']}: {issue['message']}")
     if not issues:
         print("  ✅ No issues found.")
     return 1 if any(i["severity"] == "error" for i in issues) else 0
+
+
+def _cmd_synthesize(args) -> int:
+    """Generate a curated-synthesis work order (Phase S)."""
+    import json as json_mod
+    from llmwiki.config import load_config
+    from llmwiki.synthesize import (
+        compute_work_list, format_work_list, render_todo, TODO_FILENAME,
+    )
+
+    cfg_path = Path(args.config)
+    # Auto-discover config, matching the search command's resolution.
+    if not cfg_path.exists() and cfg_path.name == "llmwiki.json":
+        alt = Path(".llmwiki") / "llmwiki.json"
+        if alt.exists():
+            cfg_path = alt
+    if not cfg_path.exists():
+        print("No llmwiki.json found — run `llmwiki init` first.", file=sys.stderr)
+        return 1
+
+    config = load_config(cfg_path)
+    wiki_root = cfg_path.parent
+    budget = getattr(args, "budget", 10)
+    items = compute_work_list(wiki_root, config, budget=budget)
+
+    todo_path = wiki_root / TODO_FILENAME
+
+    if not items:
+        # Nothing to do: don't leave a stale to-do lying around.
+        if todo_path.exists():
+            todo_path.unlink()
+        if args.json_output:
+            print(json_mod.dumps([], indent=2))
+        else:
+            print("nothing needs synthesis")
+        return 0
+
+    todo_path.write_text(render_todo(items), encoding="utf-8")
+
+    if args.json_output:
+        print(json_mod.dumps(items, indent=2))
+    else:
+        print(format_work_list(items))
+        print(f"\nWrote {todo_path}")
+    return 0
 
 
 def _cmd_status(args) -> int:

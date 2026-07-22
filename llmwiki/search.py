@@ -328,7 +328,11 @@ def format_results_agent(results: list[dict]) -> str:
     """
     lines = [f"{len(results)} results\n"]
     for r in results:
-        line = f"- [{r.get('category', '')}] {r['title']} (id: {r['id']})"
+        cat = r.get("category", "")
+        # Mark curated (hand-authored, wiki-exclusive) pages so agents can tell
+        # synthesis apart from machine-extracted pages at a glance.
+        prefix = "[curated] " if cat.startswith("curated/") else ""
+        line = f"- {prefix}[{cat}] {r['title']} (id: {r['id']})"
         lines.append(line)
         if r.get("methods"):
             for m in r["methods"]:

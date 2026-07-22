@@ -226,5 +226,7 @@ llmwiki search "method:<name>" --agent  # locate a function/method
 llmwiki status                        # check index freshness after editing files
 ```
 Heed any "index is STALE" warning in output — then prefer raw files or run `llmwiki all`.
+Save expensive derivations (cross-file logic, architecture) as `curated/notes/<slug>.md` per SCHEMA.md (cite `sources:`), then `llmwiki build` — curated pages outrank extracted ones.
+`llmwiki synthesize` lists pages that still need curated coverage.
 No CLI available? Read `{wiki_rel}/llms.txt` (index) or `{wiki_rel}/search-index.json` (entries[].body, truncated).
 MCP (optional, if configured): tools `llmwiki_search`, `llmwiki_get_page`, `llmwiki_find_method`."""

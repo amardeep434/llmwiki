@@ -9,7 +9,7 @@ import os
 import time
 from pathlib import Path
 
-from llmwiki.graph import build_graph, save_graph, _load_pages
+from llmwiki.graph import build_graph, save_graph, _load_pages, _load_curated_pages
 from llmwiki.render.html import (
     render_dashboard,
     render_category_index,
@@ -38,6 +38,7 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     """
     raw_dir = root / "raw"
     wiki_dir = root / "wiki"
+    curated_dir = root / "curated"
     out_name = config.get("build", {}).get("out_dir", "site")
     site_dir = root / out_name
 
@@ -47,17 +48,20 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
 
     cross_refs_enabled = config.get("cross_references", {}).get("enabled", True)
 
-    # 1. Optionally build knowledge graph from raw/
+    # 1. Optionally build knowledge graph from raw/ (+ curated/)
     if cross_refs_enabled:
-        graph = build_graph(raw_dir, config)
+        graph = build_graph(raw_dir, config, curated_dir=curated_dir)
         save_graph(graph, site_dir / "cross-references.json")
     else:
         graph = {"nodes": [], "edges": [], "clusters": [], "stats": {
             "total_pages": 0, "total_edges": 0, "total_clusters": 0, "orphans": 0,
         }}
 
-    # 2. Load all pages
+    # 2. Load all pages — extracted (raw/) plus curated synthesis (curated/).
+    # Curated pages flow through the existing DB/search/export pipeline like
+    # any other page from here on.
     pages = _load_pages(raw_dir)
+    pages.update(_load_curated_pages(curated_dir))
 
     # Update stats with actual page count when graph is disabled
     if not cross_refs_enabled:
@@ -91,7 +95,12 @@ def build_site(root: Path, config: dict, full: bool = False) -> dict:
     # 5. Enrich pages with importance scores, cluster IDs, and URLs
     for pid, pdata in pages.items():
         node = node_map.get(pid, {})
-        pdata["importance"] = node.get("importance", 0)
+        importance = node.get("importance", 0)
+        # Curated pages are hand-authored wiki-exclusive knowledge; floor their
+        # importance so they outrank machine-extracted pages in search/listings.
+        if pdata.get("curated"):
+            importance = max(importance, 0.5)
+        pdata["importance"] = importance
         pdata["cluster_id"] = node.get("cluster_id")
         pdata["in_degree"] = node.get("in_degree", 0)
         pdata["url"] = page_urls.get(pid, "#")
