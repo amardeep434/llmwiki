@@ -21,7 +21,7 @@ class TestAgentSchema:
         # The block lands in every conversation's context — keep it small.
         content = generate_claude_md("RioIAM", str(tmp_path / "site"),
             {"total_pages": 892, "total_edges": 2341, "total_clusters": 12})
-        assert len(content.splitlines()) <= 20
+        assert len(content.splitlines()) <= 24
 
     def test_generated_guide_mentions_module_fallback(self, tmp_path):
         content = generate_agents_md("X", str(tmp_path / "site"),

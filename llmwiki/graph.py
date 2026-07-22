@@ -10,8 +10,19 @@ from llmwiki.importance import compute_importance
 from llmwiki.clusters import detect_clusters
 
 
-def build_graph(raw_dir: Path, config: dict | None = None) -> dict:
+def build_graph(
+    raw_dir: Path,
+    config: dict | None = None,
+    curated_dir: Path | None = None,
+) -> dict:
     """Build knowledge graph from raw/ markdown files.
+
+    Curated pages (Phase S) are merged in when ``curated_dir`` is given so
+    they participate in importance/clusters exactly like extracted pages;
+    each curated page contributes ``cites`` edges to the source pages it
+    derives from. Every ``build_graph`` call site passes ``curated_dir`` so
+    the curated layer is visible consistently across build, graph, export,
+    and lint.
 
     Returns dict with nodes, edges, clusters, stats.
     """
@@ -21,10 +32,22 @@ def build_graph(raw_dir: Path, config: dict | None = None) -> dict:
         (config or {}).get("cross_references", {}).get("custom_patterns")
     )
     pages = _load_pages(raw_dir, custom_patterns)
+
+    # Merge curated pages and remember their source citations so we can add
+    # explicit ``cites`` edges once the full id set is known.
+    cite_edges: list[tuple[str, str, str]] = []
+    if curated_dir is not None:
+        curated = _load_curated_pages(curated_dir, custom_patterns)
+        pages.update(curated)
+        for cid, cpage in curated.items():
+            for src in cpage.get("sources", []):
+                cite_edges.append((cid, src, "cites"))
+
     page_ids = set(pages.keys())
 
     # Build edges from explicit references
     edges = build_edge_list(pages)
+    edges.extend(cite_edges)
 
     # Add title-based edges (if page A mentions page B's title in its body)
     title_edges = _find_title_mentions(pages)
@@ -70,6 +93,7 @@ def build_graph(raw_dir: Path, config: dict | None = None) -> dict:
             "url": _page_url(pid, pdata),
             "language": pdata.get("language", ""),
             "source_path": pdata.get("source_path", ""),
+            "curated": pdata.get("curated", False),
         })
 
     edge_dicts = [
@@ -119,6 +143,61 @@ def _load_pages(raw_dir: Path, custom_patterns: list | None = None) -> dict[str,
             "tags": _parse_list(meta.get("tags", [])),
             "references": all_refs,
             "source_path": meta.get("source_path", ""),
+            "body": body,
+        }
+    return pages
+
+
+CURATED_TYPES = ("module", "concept", "entity", "note")
+
+
+def _load_curated_pages(
+    curated_dir: Path,
+    custom_patterns: list | None = None,
+) -> dict[str, dict]:
+    """Load hand/agent-written pages from ``curated/`` (Phase S).
+
+    Curated pages are wiki-exclusive synthesis (cross-file explanations,
+    architecture, saved Q&A) that llmwiki never generates or deletes. Slug is
+    ``curated/<relative-path-without-ext>`` and category is
+    ``curated/<type>`` so they sort into their own browsable section. ``type``
+    defaults to ``note`` when missing or not one of the four allowed values;
+    the raw (unnormalised) type is preserved under ``type`` so lint can flag a
+    missing/invalid one. ``sources`` accepts both YAML list and ``[a, b]``
+    string forms, mirroring how ``_load_pages`` parses ``references``.
+    """
+    pages: dict[str, dict] = {}
+    if curated_dir is None or not curated_dir.exists():
+        return pages
+
+    for md_file in sorted(curated_dir.rglob("*.md")):
+        content = md_file.read_text(encoding="utf-8", errors="replace")
+        meta, body = _parse_frontmatter(content)
+
+        rel = md_file.relative_to(curated_dir).with_suffix("")
+        slug = "curated/" + rel.as_posix()
+
+        raw_type = str(meta.get("type", "") or "").strip()
+        norm_type = raw_type if raw_type in CURATED_TYPES else "note"
+
+        sources = _parse_list(meta.get("sources", []))
+
+        # Body cross-references (e.g. [[page-id]] links) so curated pages link
+        # like any other node; source citations become explicit ``cites`` edges
+        # in build_graph rather than living in ``references``.
+        body_refs = extract_refs_from_body(body, custom_patterns)
+
+        pages[slug] = {
+            "title": meta.get("title", md_file.stem),
+            "category": f"curated/{norm_type}",
+            "type": raw_type,
+            "language": "",
+            "tags": _parse_list(meta.get("tags", [])),
+            "references": body_refs,
+            "sources": sources,
+            "synthesized_at": str(meta.get("synthesized_at", "") or "").strip(),
+            "source_path": str(md_file),
+            "curated": True,
             "body": body,
         }
     return pages

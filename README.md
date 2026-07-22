@@ -182,6 +182,26 @@ llmwiki mcp                 # stdio JSON-RPC server backed by the same FTS5 data
 llmwiki setup-agent --mcp   # generate configs for VS Code / Cursor / JetBrains / Windsurf
 ```
 
+### Curated knowledge
+
+Extracted pages describe individual files. The knowledge agents actually need
+most — how things fit together across files — often exists nowhere in the code.
+The `curated/` layer (sibling of `raw/`) holds hand/agent-written pages for
+exactly that: cross-file explanations, architecture, saved derivations. llmwiki
+never generates or deletes these pages; it only validates and indexes them, and
+floors their ranking so they outrank machine-extracted pages.
+
+```bash
+llmwiki synthesize          # what needs a curated page written or refreshed?
+# → writes synthesis-todo.md; the resident agent writes pages per SCHEMA.md
+llmwiki lint                # flags stale, uncited, or bad-source curated pages
+llmwiki build               # index the curated pages into search/exports
+```
+
+`llmwiki init` drops a `SCHEMA.md` describing the conventions (page types,
+required frontmatter, the cite-every-claim rule). llmwiki never calls an LLM
+itself — your resident coding agent does the writing.
+
 ### Staleness protection
 
 The wiki is a build artifact; code changes constantly during agent sessions. Every search/get/MCP response is preceded by a **STALE INDEX warning** when source files changed since the last ingest, telling the agent to prefer raw files or re-run `llmwiki all`. Check anytime with `llmwiki status`.

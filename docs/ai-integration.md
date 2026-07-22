@@ -105,6 +105,60 @@ llmwiki agent --disable
 
 When enabled, the `agent_assist` field in `llmwiki.json` is set to `true`, and the build process includes agent-specific instructions in the site.
 
+### Curated Knowledge (Phase S)
+
+Machine extraction produces one page per file. The higher-value knowledge —
+how modules interact, why an architecture is shaped a certain way, a derivation
+worth saving — lives nowhere in the source. The `curated/` layer (a sibling of
+`raw/` under the wiki root) holds pages written by hand or by your resident
+coding agent for exactly that. llmwiki never generates or deletes curated
+pages; it validates and indexes them and floors their importance to ≥ 0.5 so
+they outrank extracted pages in search and listings.
+
+Each curated page is a markdown file with frontmatter:
+
+```
+---
+title: "How provisioning flows"
+type: concept                                 # module | concept | entity | note
+sources: [rule/core/x, application/core/y]    # page ids this page derives from
+synthesized_at: 2026-07-20T10:00:00Z          # ISO 8601, set by the author
+tags: [provisioning]
+---
+```
+
+Workflow:
+
+```bash
+llmwiki synthesize            # prioritised work order: refresh + create items
+                              # → writes synthesis-todo.md with per-item steps
+llmwiki lint                  # validates the curated layer (see rules below)
+llmwiki build                 # indexes curated pages into search/DB/exports
+```
+
+`llmwiki synthesize` emits `refresh` items (curated pages whose cited sources
+changed since `synthesized_at`) first, then `create` items for the
+highest-importance extracted pages that no curated page cites yet. `--budget N`
+caps the list (refresh kept first); `--json` prints machine-readable output.
+
+`llmwiki init` writes `SCHEMA.md` at the wiki root with the full conventions
+(page types, required frontmatter, the "every factual claim must cite a source
+page id" rule, the ≤150-line limit, `[[page-id]]` linking, and flagging
+disagreements with a `> CONTRADICTION:` blockquote). Re-running `init` leaves an
+edited `SCHEMA.md` untouched.
+
+Curated-aware lint rules:
+
+| Rule | Severity | Trigger |
+| --- | --- | --- |
+| `stale-claim` | error | a cited source's raw page changed after `synthesized_at` |
+| `bad-source` | error | a `sources:` entry matches no existing page id |
+| `uncited` | warning | the page has an empty/missing `sources:` |
+| `missing-type` | warning | `type` is absent or not one of the four allowed values |
+
+In agent search output (`--agent`), curated results are prefixed with
+`[curated]` so agents can tell synthesis apart from extracted pages.
+
 ### Search Output Modes
 
 The `llmwiki search` command supports three output modes optimized for AI consumption:
